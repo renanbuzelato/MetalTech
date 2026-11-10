@@ -1,67 +1,328 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { metalTechData as data } from './data/metaltechData'
+import { api, getStoredSession, isDemoMode } from './services/api'
 import './App.css'
 
-const pages = [
-  { id: 'overview', label: 'Visão geral', icon: '▦' },
-  { id: 'station', label: 'Estação e sensores', icon: '♧' },
-  { id: 'analytics', label: 'Análises', icon: '⌁' },
-  { id: 'history', label: 'Histórico', icon: '◴' },
-  { id: 'alerts', label: 'Alertas', icon: '⚠', badge: '2' },
-  { id: 'users', label: 'Usuários e acesso', icon: '♙' },
-  { id: 'settings', label: 'Configurações', icon: '☷' },
-]
-const readings = Array.from({ length: 9 }, (_, i) => ({ time: ['14:32:05','14:32:03','14:32:01','14:31:59','14:31:57','14:31:55','14:31:53','14:31:51','14:31:49'][i], id: `#LT-${1280-i}`, type: i % 3 === 1 ? 'Não metálica' : 'Metálica', level: '78%', status: 'Recebida' }))
-
-function App() {
-  const [page, setPage] = useState('overview')
-  const [filter, setFilter] = useState('Todas')
-  const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState(readings[0])
-  const [toast, setToast] = useState('')
-  const [comment, setComment] = useState('')
-  const [users, setUsers] = useState([{name:'Carla Oliveira',email:'carla.oliveira@metaltech.com.br',role:'Administrador',status:'Ativo'},{name:'João Santos',email:'joao.santos@metaltech.com.br',role:'Operador',status:'Ativo'},{name:'Ana Souza',email:'ana.souza@metaltech.com.br',role:'Analista',status:'Ativo'},{name:'Bruno Lima',email:'bruno.lima@metaltech.com.br',role:'Operador',status:'Pendente'}])
-  const [invite, setInvite] = useState({name:'',email:'',role:'Operador'})
-  const [settings, setSettings] = useState({attention:75,critical:90,variation:10,interval:2,api:'https://api.metaltech.example/v1',controller:'CLP-001',refresh:2,station:'Esteira de triagem 01',location:'Linha A · Fábrica São Paulo',capacity:1000,height:100})
-  const [alertStatus, setAlertStatus] = useState('Em aberto')
-  const [showLogin, setShowLogin] = useState(false)
-
-  const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
-  const title = pages.find(p => p.id === page)?.label || 'Visão geral'
-  const visibleReadings = useMemo(() => readings.filter(r => (filter === 'Todas' || r.type === filter) && `${r.id} ${r.time}`.toLowerCase().includes(search.toLowerCase())), [filter, search])
-
-  const changeSetting = (key, value) => setSettings(s => ({ ...s, [key]: value }))
-  const field = (label, key, type='text') => <label className="field"><span>{label}</span><input type={type} value={settings[key]} onChange={e => changeSetting(key, e.target.value)} /></label>
-  const action = (label, fn) => <button className="primary" onClick={fn}>{label}</button>
-
-  if (showLogin) return <div className="login-shell"><section className="login-brand"><div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div><div className="login-copy"><span>INTELIGÊNCIA INDUSTRIAL</span><h1>Do sensor<br/>à decisão.</h1><p>Sua operação conectada. Seus indicadores, sempre por perto.</p></div><div className="login-foot">TECNOLOGIA PARA UMA INDÚSTRIA MAIS INTELIGENTE</div></section><section className="login-form"><div className="login-card"><div className="eyebrow">BEM-VINDO DE VOLTA</div><h2>Acesse sua plataforma</h2><p>Entre com suas credenciais para acompanhar a operação.</p><label className="field"><span>E-mail corporativo</span><input type="email" placeholder="nome@empresa.com.br"/></label><label className="field"><span>Senha</span><input type="password" placeholder="Digite sua senha"/></label><label className="remember"><input type="checkbox" defaultChecked/> Manter conectado</label>{action('Entrar na plataforma', () => {setShowLogin(false);notify('Acesso realizado com sucesso')})}<small className="muted">Ambiente acadêmico demonstrativo · © MetalTech</small></div></section></div>
-
-  return <div className="app-shell">
-    <aside className="sidebar"><div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div><div className="workspace"><small>WORKSPACE</small><span>Fábrica São Paulo⌄</span></div><nav>{pages.map(p => <button key={p.id} className={page===p.id?'nav-item active':'nav-item'} onClick={()=>setPage(p.id)}><i>{p.icon}</i><span>{p.label}</span>{p.badge&&<em>{p.badge}</em>}</button>)}</nav><div className="sidebar-bottom"><div className="integration"><b><i/> Integração ativa</b><small>API sincronizada há 2 s</small></div><div className="profile"><b>Carla Oliveira</b><small>Administradora · <button onClick={()=>setShowLogin(true)}>Sair ↗</button></small></div></div></aside>
-    <main className="main-area"><header className="topbar"><div className="crumb">Operação&nbsp; / &nbsp;{title}</div><div className="top-right"><div className="live"><b>● Dados simulados</b><small>10 nov 2026 · 14:32</small></div><button className="bell" onClick={()=>setPage('alerts')}>♧</button><div className="top-user"><b>Carla Oliveira</b><small>Administradora</small></div></div></header>
-      <div className="content"><div className="page-heading"><div><h1>{page==='overview'?'Visão geral':page==='station'?'Estação e sensores':page==='analytics'?'Análises estatísticas':page==='history'?'Histórico de leituras':page==='alerts'?'Central de alertas':page==='users'?'Usuários e permissões':'Configurações'}</h1><p>{({overview:'Acompanhe os indicadores da sua operação em tempo real.',station:'Detalhes da linha, leituras e classificação das peças.',analytics:'Transforme as leituras do turno em decisões operacionais.',history:'Rastreabilidade de cada leitura e classificação da esteira.',alerts:'Priorize ocorrências e acompanhe as ações da equipe.',users:'Gerencie quem pode operar, analisar e administrar a plataforma.',settings:'Integração, segurança e critérios de alerta em um só lugar.'})[page]}</p></div>{page==='overview'?<button className="outline" onClick={()=>notify('Resumo exportado')}>↓ Exportar resumo</button>:page==='station'?action('Editar estação',()=>setPage('settings')):page==='analytics'?action('↓ Exportar relatório',()=>notify('Relatório exportado')):page==='history'?action('↓ Exportar CSV',()=>notify('CSV exportado')):page==='alerts'?action('Configurar regras',()=>setPage('settings')):page==='users'?action('Convidar usuário',()=>document.getElementById('invite-name')?.focus()):action('Salvar alterações',()=>notify('Configurações salvas'))}</div>
-
-      {page==='overview'&&<><div className="metric-grid"><Metric label="Peças no turno" value="1.280" note="↑ 12% vs. turno anterior"/><Metric label="Peças metálicas" value="832" note="65% do total" accent/><Metric label="Peças não metálicas" value="448" note="35% do total"/><Metric label="Nível do reservatório" value="78%" note="Atenção a partir de 75%" warn/></div><div className="two-col"><Card title="Evolução da triagem" extra={<select><option>Esteira 01</option></select>}><div className="chart-area"><div className="chart-labels"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><LineChart/></div><div className="legend"><span><i className="dot teal"/> Metálicas por hora</span><span><i className="dot blue"/> Não metálicas por hora</span></div></Card><Card title="Reservatório em atenção"><div className="tank-number">78% <span className="tag warning">Atenção</span></div><p className="muted">780 peças armazenadas · capacidade: 1.000</p><Progress value={78}/><small>Distância até as peças: 22 cm</small><p className="muted tiny">Esvaziar antes de atingir 90%.</p></Card></div><div className="two-col"><Card title="Leituras recentes"><DataTable rows={readings.slice(0,5)} compact onSelect={setSelected}/></Card><Card title="Saúde da integração"><div className="health"><b><i className="dot teal"/> Sistema operacional</b><span className="tag success">Conectado</span></div><div className="health-row"><span>Sensor de distância</span><b>Online</b></div><div className="health-row"><span>Sensor indutivo</span><b>Online</b></div><div className="health-row"><span>Sensor capacitivo</span><b>Online</b></div><div className="health-row"><span>Última sincronização</span><b>há 2 s</b></div></Card></div></>}
-
-      {page==='station'&&<><Card className="station-summary"><div><small>ET-001</small><h2>Esteira de triagem 01</h2><p className="muted">Linha A · Fábrica São Paulo · Turno 06:00–14:32</p></div><div className="summary-status"><span className="tag success">● Em operação</span><small>Última leitura: 14:32:05</small></div></Card><div className="two-col station-cols"><Card title="Da detecção à classificação"><p className="muted">Leitura combinada dos sensores · peça #LT-1280</p><div className="process">{[['01','Distância','Passagem detectada'],['02','Indutivo','Metal detectado'],['03','Capacitivo','Material presente'],['04','Classificação','Peça metálica']].map((x,i)=><div className={i===3?'process-step final':'process-step'} key={x[0]}><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></div>)}</div><p className="muted tiny">Indutivo + capacitivo ativos = metálica. Somente capacitivo = não metálica.</p></Card><Card title="Reservatório de saída"><div className="tank-number">78% <span className="tag warning">Atenção</span></div><p className="muted">780 peças armazenadas · capacidade: 1.000</p><Progress value={78}/><small>Distância até as peças: 22 cm</small></Card></div><div className="sensor-grid"><Sensor title="Sensor de distância" code="SD-001 · Ultrassônico" value="22 cm" detail="Nível do reservatório"/><Sensor title="Sensor indutivo" code="SI-001 · Detecção de metal" value="Ativo" detail="Peça metálica detectada"/><Sensor title="Sensor capacitivo" code="SC-001 · Presença de material" value="Ativo" detail="Material presente na esteira"/></div><div className="notice"><div><b>Coleta automatizada</b><p>Envio HTTP a cada 2 s · Controlador CLP-001 · API v1 · HTTPS ativo</p></div><button onClick={()=>setPage('settings')}>Ver configurações →</button></div></>}
-
-      {page==='analytics'&&<><div className="filter-bar"><select><option>Esteira 01</option></select><select><option>10 nov 2026 · Turno atual</option></select><span className="muted">8 amostras horárias</span></div><div className="analytics-grid"><Card title="Nível do reservatório ao longo do turno"><p className="muted">Nível (%)</p><LineChart/></Card><Card title="Composição da produção"><p className="muted">1.280 peças classificadas</p><HorizontalBar label="Metálicas" value="832 · 65%" percent={65}/><HorizontalBar label="Não metálicas" value="448 · 35%" percent={35} blue/></Card><Card title="Frequência do nível do reservatório"><p className="muted">Número de amostras por faixa (%)</p><div className="histogram">{[1,3,3,1].map((v,i)=><div key={i}><b>{v}</b><i style={{height:`${v*28}px`}}/><small>{['0–25','25–50','50–75','75–100'][i]}</small></div>)}</div></Card><Card title="Dispersão e possíveis outliers"><p className="muted">Boxplot · Nível do reservatório (%)</p><div className="boxplot"><i/><b/><i/></div><p className="muted tiny">Sem outliers pelo critério de 1,5 × IQR nesta amostra.</p></Card></div><Card title="Estatística descritiva"><p className="muted">Contagem por hora e nível do reservatório · 8 amostras</p><table className="stats-table"><thead><tr><th>MEDIDA</th><th>METÁLICAS (PEÇAS/H)</th><th>NÃO METÁLICAS (PEÇAS/H)</th><th>NÍVEL (%)</th></tr></thead><tbody>{[['Média','104','56','49,5'],['Mediana (Q2)','107,5','57,5','49'],['Moda','104','56','Amodal'],['Desvio padrão populacional','17,51','9,43','18,18'],['1º quartil (Q1)','100,75','54,25','36'],['3º quartil (Q3)','116,25','63,25','62,5']].map(r=><tr key={r[0]}>{r.map(v=><td key={v}>{v}</td>)}</tr>)}</tbody></table></Card></>}
-
-      {page==='history'&&<><div className="filter-bar"><select><option>10 nov 2026</option></select><select><option>Esteira 01</option></select><select value={filter} onChange={e=>setFilter(e.target.value)}><option>Todas</option><option>Metálica</option><option>Não metálica</option></select><input placeholder="Buscar ID de leitura" value={search} onChange={e=>setSearch(e.target.value)}/><button className="soft" onClick={()=>notify(`${visibleReadings.length} leituras encontradas`)}>Aplicar filtros</button></div><div className="history-layout"><Card title="Leituras da esteira" extra={<small className="muted">1.280 registros encontrados</small>}><DataTable rows={visibleReadings} onSelect={setSelected} selected={selected}/><div className="pagination">Exibindo 1–{visibleReadings.length} de 1.280 <span>‹ 1 2 3 … 143 ›</span></div></Card><Card title="Detalhe da leitura selecionada"><div className="reading-title"><h2>{selected.id}</h2><span className="tag success">Recebida</span></div><small className="muted">10 nov 2026 · {selected.time}</small>{[['Estação','ET-001 · Esteira 01'],['Classificação',selected.type],['Indutivo','1 · Metal detectado'],['Capacitivo','1 · Material presente'],['Distância','22 cm'],['Nível calculado','78%']].map(r=><div className="detail-row" key={r[0]}><span>{r[0]}</span><b>{r[1]}</b></div>)}<div className="trace"><b>Rastreabilidade</b><p>Origem: CLP-001 → API REST v1</p><p>Validação: concluída · Armazenada na nuvem</p><strong>Latência de ingestão: 124 ms</strong></div></Card></div><div className="notice simple">Classificação automática: indutivo ativo = metálica; capacitivo sem indutivo = não metálica.</div></>}
-
-      {page==='alerts'&&<><div className="metric-grid three"><Metric label="Alertas ativos" value="02" note="Exigem acompanhamento" warn/><Metric label="Nível crítico" value="00" note="Nenhuma ocorrência ≥ 90%"/><Metric label="Resolvidos hoje" value="03" note="Última resolução às 12:18"/></div><div className="alerts-layout"><Card title="Ocorrências do turno" extra={<div className="tabs">{['Todas','Ativas','Resolvidas'].map(t=><button className={filter===t?'selected':''} onClick={()=>setFilter(t)} key={t}>{t}</button>)}</div>}><div className="alert-list">{[['Reservatório próximo da capacidade','14:32 · Esteira 01 · Nível em 78%','Em aberto'],['Enchimento acima do padrão','14:29 · Variação de +11 p.p. em 5 min','Em aberto'],['Comunicação restabelecida','12:18 · Sensor capacitivo online','Resolvido'],['Reservatório esvaziado','10:45 · Nível retornou a 22%','Resolvido'],['Leitura inválida descartada','08:52 · Dado validado pelo operador','Resolvido']].filter(x=>filter==='Todas'||(filter==='Ativas'?x[2]==='Em aberto':x[2]==='Resolvido')).map(a=><button className="alert-row" key={a[0]} onClick={()=>setAlertStatus(a[2])}><span className={a[2]==='Em aberto'?'alert-mark':'resolved-mark'}/><span><b>{a[0]}</b><small>{a[1]}</small></span><em className={a[2]==='Em aberto'?'tag warning':'tag success'}>{a[2]}</em></button>)}</div></Card><Card title="Tratamento do alerta"><span className="tag warning">Atenção · #AL-078</span><h2 className="alert-detail-title">Reservatório próximo<br/>da capacidade</h2><p className="muted">Esteira 01 · 10 nov 2026, 14:32</p><div className="detail-row"><span>Nível atual</span><b className="tank-orange">78%</b></div><div className="detail-row"><span>Critério de disparo</span><b>Nível do reservatório ≥ 75%.</b></div><p className="muted">Ação recomendada</p><p>Planeje o esvaziamento e acompanhe a evolução. O nível crítico é de 90%.</p><textarea placeholder="Adicionar observação da equipe..." value={comment} onChange={e=>setComment(e.target.value)}/>{action('Reconhecer alerta',()=>{setAlertStatus('Reconhecido');notify('Alerta reconhecido e registrado')})}<small className="muted tiny">{alertStatus==='Em aberto'?'Reconhecer registra quem assumiu a ocorrência.':`Status atual: ${alertStatus}`}</small></Card></div></>}
-
-      {page==='users'&&<><div className="users-layout"><Card title="Equipe da fábrica" extra={<small className="muted">4 usuários · 3 ativos · 1 convite pendente</small>}><table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map(u=><tr key={u.email}><td><b>{u.name}</b><small>{u.email}</small></td><td>{u.role}</td><td><span className={u.status==='Ativo'?'tag success':'tag warning'}>{u.status}</span></td><td><button className="text-action" onClick={()=>notify(`Opções de ${u.name}`)}>Editar ···</button></td></tr>)}</tbody></table></Card><Card title="Convidar usuário"><p className="muted">Envie um convite com o perfil adequado.</p><label className="field"><span>Nome</span><input id="invite-name" value={invite.name} onChange={e=>setInvite({...invite,name:e.target.value})} placeholder="Nome completo"/></label><label className="field"><span>E-mail corporativo</span><input type="email" value={invite.email} onChange={e=>setInvite({...invite,email:e.target.value})} placeholder="nome@metaltech.com.br"/></label><label className="field"><span>Perfil de acesso</span><select value={invite.role} onChange={e=>setInvite({...invite,role:e.target.value})}><option>Operador</option><option>Analista</option><option>Administrador</option></select></label>{action('Enviar convite',()=>{if(!invite.name||!invite.email){notify('Preencha nome e e-mail');return}setUsers([...users,{...invite,status:'Pendente'}]);setInvite({name:'',email:'',role:'Operador'});notify('Convite enviado')})}</Card></div><Card title="Permissões por perfil"><p className="muted">Aplique o menor privilégio necessário para cada integrante.</p><table className="stats-table permission-table"><thead><tr><th>RECURSO</th><th>OPERADOR</th><th>ANALISTA</th><th>ADMINISTRADOR</th></tr></thead><tbody>{[['Monitorar e consultar leituras','Permitido','Permitido','Permitido'],['Reconhecer alertas','Permitido','Somente leitura','Permitido'],['Exportar análises e históricos','Não permitido','Permitido','Permitido'],['Editar regras, estações e usuários','Não permitido','Não permitido','Permitido']].map(r=><tr key={r[0]}>{r.map((v,i)=><td key={v+i} className={i>0&&v==='Permitido'?'allowed':''}>{v}</td>)}</tr>)}</tbody></table></Card><div className="notice simple">Convites expiram em 48 h. Alterações de perfil ficam registradas no histórico de auditoria.</div></>}
-
-      {page==='settings'&&<><div className="settings-grid"><Card title="Critérios de alerta"><p className="muted">Reservatório e detecção de comportamento anormal</p><div className="form-grid">{field('Nível de atenção (%)','attention','number')}{field('Nível crítico (%)','critical','number')}{field('Variação em 5 minutos (p.p.)','variation','number')}{field('Intervalo de coleta (s)','interval','number')}</div><p className="muted tiny">Disparar anomalia quando a variação for maior que 10 p.p. em 5 min.</p><small className="orange-text">Atenção: {settings.attention}–{settings.critical}% · Crítico: ≥ {settings.critical}%</small></Card><Card title="Integração da plataforma"><div className="card-status"><span className="tag success">● Conectada</span></div><p className="muted">O dashboard e o aplicativo RA usam a mesma API REST.</p>{field('URL base · Ambiente de demonstração','api') }<div className="form-grid">{field('Identificador do controlador','controller')}{field('Intervalo de atualização','refresh','number')}</div><button className="soft" onClick={()=>notify('Conexão testada · 124 ms')}>Testar conexão</button><small className="muted"> Último teste: hoje, 14:31 · 124 ms</small></Card><Card title="Cadastro da estação"><span className="tag neutral">ET-001</span><p className="muted">Dados de identificação e capacidade operacional.</p>{field('Nome da estação','station')}{field('Localização','location')}<div className="form-grid">{field('Capacidade (peças)','capacity','number')}{field('Altura útil (cm)','height','number')}</div><small className="muted">Sensores: SD-001 · SI-001 · SC-001</small></Card><Card title="Nuvem e proteção de dados"><p className="muted">Arquitetura proposta para o projeto acadêmico</p>{[['Hospedagem','PaaS · API Spring Boot'],['Persistência','PostgreSQL gerenciado'],['Dados em trânsito','HTTPS / TLS'],['Dados em repouso','Criptografia habilitada'],['Disponibilidade','2 instâncias · Escala automática'],['Backup e restauração','Diário · Retenção de 7 dias']].map(r=><div className="health-row" key={r[0]}><span>{r[0]}</span><b>{r[1]}</b></div>)}<label className="remember"><input type="checkbox" defaultChecked/> Registrar alterações administrativas</label></Card></div></>}
-      <footer className="footer"><span>MetalTech&nbsp; / &nbsp;Ambiente acadêmico demonstrativo</span><span>Atualização automática a cada 2 s</span></footer>
-    </div></main>{toast&&<div className="toast">✓ {toast}</div>}</div>
+const number = (value) => Number(value || 0).toLocaleString('pt-BR')
+const percent = (value) => `${Number(value || 0)}%`
+const dateTime = (value) => new Date(value).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const dateLabel = (value) => new Date(value).toLocaleDateString('pt-BR')
+const avg = (values) => values.length ? values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length : 0
+const median = (values) => {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
 }
 
-function Metric({label,value,note,accent,warn}) { return <div className="metric card"><span>{label}</span><strong className={accent?'teal-text':warn?'orange-text':''}>{value}</strong><small>{note}</small></div> }
-function Card({title,extra,children,className=''}) { return <section className={`card panel ${className}`}><div className="panel-head"><h3>{title}</h3>{extra}</div>{children}</section> }
-function Progress({value}) { return <div className="progress"><i style={{width:`${value}%`}}/></div> }
-function Sensor({title,code,value,detail}) { return <Card title={title} extra={<span className="tag success">● Online</span>}><small className="muted">{code}</small><div className="sensor-value">{value}</div><b className="sensor-detail">{detail}</b><small className="muted tiny">Sinal digital · atualizado há 2 s</small></Card> }
-function DataTable({rows,onSelect,selected}) { return <table className="data-table"><thead><tr><th>HORÁRIO</th><th>ID DA LEITURA</th><th>TIPO DA PEÇA</th><th>NÍVEL</th><th>STATUS</th></tr></thead><tbody>{rows.map(r=><tr key={r.id} className={selected?.id===r.id?'row-selected':''} onClick={()=>onSelect?.(r)}><td>{r.time}</td><td><b>{r.id}</b></td><td><span className={r.type==='Metálica'?'tag teal-tag':'tag blue-tag'}>{r.type}</span></td><td>{r.level}</td><td className="teal-text">{r.status}</td></tr>)}</tbody></table> }
-function LineChart() { return <svg className="line-chart" viewBox="0 0 600 170" preserveAspectRatio="none"><g stroke="#e7edf2" strokeWidth="1"><path d="M0 20H600M0 55H600M0 90H600M0 125H600M0 160H600"/></g><path d="M0 132 L75 120 L150 108 L225 95 L300 82 L375 70 L450 58 L525 45 L600 34" fill="none" stroke="#00877f" strokeWidth="3"/><path d="M0 145 L75 140 L150 133 L225 128 L300 120 L375 112 L450 106 L525 100 L600 94" fill="none" stroke="#5478cf" strokeWidth="2" strokeDasharray="5 4"/><path d="M0 55H600" stroke="#e8a23a" strokeDasharray="5 4"/></svg> }
-function HorizontalBar({label,value,percent,blue}) { return <div className="hbar-row"><span>{label}</span><div><i style={{width:`${percent}%` ,background:blue?'#5878cf':'#00877f'}}/></div><b>{value}</b></div> }
+function App() {
+  const [station, setStation] = useState(data.operation.station)
+  const [readingsData, setReadingsData] = useState(data.operation.readings)
+  const [hourly, setHourly] = useState(data.operation.hourlyProduction)
+  const [sensors, setSensors] = useState(data.operation.sensors)
+  const [alerts, setAlerts] = useState(data.operation.alerts)
+  const [user, setUser] = useState(() => getStoredSession())
+  const thresholds = data.configuration.alertThresholds
+
+  const [page, setPage] = useState('overview')
+  const [filter, setFilter] = useState('Todas')
+  const [historyType, setHistoryType] = useState('Todas')
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState(readingsData[0] ?? null)
+  const [selectedAlert, setSelectedAlert] = useState(data.operation.alerts[0] ?? null)
+  const [comment, setComment] = useState('')
+  const [toast, setToast] = useState('')
+  const [users, setUsers] = useState(data.account.users)
+  const [busy, setBusy] = useState(false)
+  const [apiStatus, setApiStatus] = useState(isDemoMode() ? 'demo' : 'checking')
+  const [invite, setInvite] = useState({ name: '', email: '', role: 'Operador' })
+  const [settings, setSettings] = useState({
+    ...thresholds,
+    ...data.configuration.collection,
+    ...data.configuration.integration,
+    ...data.configuration.station,
+  })
+  const reservoir = { ...data.operation.reservoir, currentLevel: readingsData[0]?.reservoirLevel ?? data.operation.reservoir.currentLevel, distance: readingsData[0]?.distance ?? data.operation.reservoir.distance, capacity: settings.reservoirCapacity, attentionThreshold: settings.attention, criticalThreshold: settings.critical }
+  const canAdmin = user?.role === 'Administrador'
+  const [showLogin, setShowLogin] = useState(() => !getStoredSession())
+  const [login, setLogin] = useState({ email: '', password: '', remember: true })
+
+  const notify = (message) => {
+    setToast(message)
+    window.setTimeout(() => setToast(''), 2600)
+  }
+
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    const load = async () => {
+      try {
+        const [remoteUsers, remoteAlerts, remoteReadings, remoteSensors, remoteProduction, remoteSettings, remoteStation] = await Promise.all([
+          api.listUsers(), api.listAlerts(), api.listReadings(), api.listSensors(), api.listProduction(), api.getSettings(), api.getStation()
+        ])
+        if (active) {
+          setUsers(remoteUsers); setAlerts(remoteAlerts); if (remoteAlerts[0]) setSelectedAlert(remoteAlerts[0]); setReadingsData(remoteReadings); setSensors(remoteSensors); setHourly(remoteProduction); if (remoteStation) setStation(remoteStation)
+          if (remoteSettings) setSettings((current) => ({ ...current, ...remoteSettings.alertThresholds, ...remoteSettings.collection, ...remoteSettings.integration, ...remoteSettings.station }))
+          setApiStatus(isDemoMode() ? 'demo' : 'connected')
+        }
+      } catch (error) { if (active) { setApiStatus('error'); notify(error.message) } }
+    }
+    load()
+    return () => { active = false }
+  }, [user])
+
+  // Em modo REST, atualiza telemetria e alertas automaticamente. O intervalo é configurável.
+  useEffect(() => {
+    if (!user || isDemoMode()) return undefined
+    const intervalMs = Math.max(2, Number(settings.refreshSeconds) || 5) * 1000
+    const timer = window.setInterval(async () => {
+      try {
+        const [nextSensors, nextReadings, nextProduction, nextAlerts] = await Promise.all([
+          api.listSensors(), api.listReadings(), api.listProduction(), api.listAlerts()
+        ])
+        setSensors(nextSensors); setReadingsData(nextReadings); setHourly(nextProduction); setAlerts(nextAlerts)
+      } catch { setApiStatus('error') }
+    }, intervalMs)
+    return () => window.clearInterval(timer)
+  }, [user, settings.refreshSeconds])
+
+  const pageInfo = {
+    overview: ['Visão geral', 'Acompanhe os indicadores da sua operação em tempo real.'],
+    station: ['Estação e sensores', 'Detalhes da linha, leituras e classificação das peças.'],
+    analytics: ['Análises estatísticas', 'Transforme as leituras do turno em decisões operacionais.'],
+    history: ['Histórico de leituras', 'Rastreabilidade de cada leitura e classificação da esteira.'],
+    alerts: ['Central de alertas', 'Priorize ocorrências e acompanhe as ações da equipe.'],
+    users: ['Usuários e permissões', 'Gerencie quem pode operar, analisar e administrar a plataforma.'],
+    settings: ['Configurações', 'Integração, segurança e critérios de alerta em um só lugar.'],
+  }
+  const navItems = [
+    ['overview', '▦', 'Visão geral'], ['station', '♧', 'Estação e sensores'], ['analytics', '⌁', 'Análises'],
+    ['history', '◴', 'Histórico'], ['alerts', '⚠', 'Alertas'], ['users', '♙', 'Usuários e acesso'], ['settings', '☷', 'Configurações'],
+  ]
+  const [heading, description] = pageInfo[page] ?? pageInfo.overview
+
+  const totals = useMemo(() => {
+    const metallic = hourly.reduce((sum, item) => sum + Number(item.metallic || 0), 0)
+    const nonMetallic = hourly.reduce((sum, item) => sum + Number(item.nonMetallic || 0), 0)
+    const total = metallic + nonMetallic
+    return { metallic, nonMetallic, total, metallicPercent: total ? Math.round(metallic / total * 100) : 0, nonMetallicPercent: total ? Math.round(nonMetallic / total * 100) : 0 }
+  }, [hourly])
+
+  const visibleReadings = useMemo(() => readingsData.filter((reading) =>
+    (historyType === 'Todas' || reading.classification === historyType) &&
+    `${reading.id} ${dateTime(reading.timestamp)}`.toLowerCase().includes(search.toLowerCase())), [historyType, search, readingsData])
+
+  const visibleAlerts = alerts.filter((alert) => filter === 'Todas' ||
+    (filter === 'Ativas' ? alert.status !== 'Resolvido' : alert.status === 'Resolvido'))
+  const activeAlerts = alerts.filter((alert) => alert.status !== 'Resolvido').length
+  const resolvedAlerts = alerts.filter((alert) => alert.status === 'Resolvido').length
+  const onlineSensors = sensors.filter((sensor) => sensor.status === 'Online').length
+  const lastReading = readingsData[0]
+
+  const changeSetting = (key, value) => setSettings((current) => ({ ...current, [key]: value }))
+  const field = (label, key, type = 'text') => <label className="field" key={key}><span>{label}</span><input type={type} value={settings[key] ?? ''} onChange={(event) => changeSetting(key, type === 'number' ? Number(event.target.value) : event.target.value)} /></label>
+  const action = (label, fn) => <button className="primary" onClick={fn}>{label}</button>
+  const handleLogin = async (event) => {
+    event?.preventDefault()
+    setBusy(true)
+    try { const authenticated = await api.login({ ...login, remember: login.remember }); setUser(authenticated); setShowLogin(false); notify(isDemoMode() ? 'Acesso demonstrativo iniciado' : 'Login realizado com sucesso') }
+    catch (error) { notify(error.message) } finally { setBusy(false) }
+  }
+  const handleLogout = async () => { await api.logout(); setUser(null); setShowLogin(true); setPage('overview'); notify('Sessão encerrada') }
+  const saveSettings = async () => {
+    setBusy(true)
+    try {
+      await api.saveSettings({
+        alertThresholds: { attention: settings.attention, critical: settings.critical, variationInFiveMinutes: settings.variationInFiveMinutes },
+        collection: { intervalSeconds: settings.intervalSeconds, refreshSeconds: settings.refreshSeconds },
+        integration: { apiUrl: settings.apiUrl, controllerId: settings.controllerId },
+        station: { name: settings.name, location: settings.location, reservoirCapacity: settings.reservoirCapacity, reservoirHeight: settings.reservoirHeight }
+      })
+      notify(isDemoMode() ? 'Configurações salvas neste navegador' : 'Configurações salvas na API')
+    } catch (error) { notify(error.message) } finally { setBusy(false) }
+  }
+  const exportCsv = async () => {
+    try {
+      const rows = await api.exportReadings({ stationId: station.id })
+      const headers = ['id', 'timestamp', 'classification', 'inductive', 'capacitive', 'distance', 'reservoirLevel', 'status']
+      const csv = [headers.join(';'), ...rows.map((row) => headers.map((key) => JSON.stringify(row[key] ?? '')).join(';'))].join('\n')
+      const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }))
+      const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'metaltech-leituras.csv'; anchor.click(); URL.revokeObjectURL(url)
+      notify('Arquivo CSV exportado')
+    } catch (error) { notify(error.message) }
+  }
+  const pageAction = {
+    overview: () => <button className="outline" onClick={exportCsv}>↓ Exportar resumo</button>,
+    station: () => action('Editar estação', () => setPage('settings')),
+    analytics: () => <button className="primary" onClick={exportCsv}>↓ Exportar relatório</button>,
+    history: () => <button className="outline" onClick={exportCsv}>↓ Exportar CSV</button>,
+    alerts: () => action('Configurar regras', () => setPage('settings')),
+    users: () => action('Convidar usuário', () => document.getElementById('invite-name')?.focus()),
+    settings: () => <button className="primary" disabled={busy} onClick={saveSettings}>{busy ? 'Salvando...' : 'Salvar alterações'}</button>,
+  }
+
+  if (showLogin || !user) return (
+    <div className="login-shell">
+      <section className="login-brand">
+        <div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div>
+        <div className="login-copy"><span>INTELIGÊNCIA INDUSTRIAL</span><h1><span>Do sensor<br /></span><span>à decisão.</span></h1><p>Sua operação conectada. Seus indicadores, sempre por perto.</p></div>
+        <div className="login-foot">TECNOLOGIA PARA UMA INDÚSTRIA MAIS INTELIGENTE</div>
+      </section>
+      <section className="login-form"><form className="login-card" onSubmit={handleLogin}>
+        <div className="eyebrow">BEM-VINDO DE VOLTA</div><h2>Acesse sua plataforma</h2><p>Entre com suas credenciais para acompanhar a operação.</p>
+        <label className="field"><span>E-mail corporativo</span><input type="email" placeholder="nome@empresa.com.br" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} /></label>
+        <label className="field"><span>Senha</span><input type="password" placeholder="Digite sua senha" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} /></label>
+        <label className="remember"><input type="checkbox" checked={login.remember} onChange={(event) => setLogin({ ...login, remember: event.target.checked })} /> Manter conectado</label>
+        <button className="primary" type="submit" disabled={busy}>{busy ? 'Autenticando...' : 'Entrar na plataforma'}</button>
+        <small className="muted">{isDemoMode() ? `Modo demonstração · use ${data.session.user.email} (qualquer senha)` : 'MetalTech · © MetalTech'}</small>
+      </form></section>
+    </div>
+  )
+
+  return (
+    <div className="app-shell">
+      <div className="app-layout">
+        <aside className="sidebar">
+          <div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div>
+          <div className="workspace"><small>WORKSPACE</small><span>Fábrica São Paulo</span></div>
+          <nav>{navItems.map(([id, icon, label]) => <button key={id} className={page === id ? 'nav-item active' : 'nav-item'} onClick={() => { if ((id === 'users' || id === 'settings') && !canAdmin) { notify('Seu perfil não possui permissão para esta área'); return } setPage(id); setFilter('Todas') }}><i>{icon}</i><span>{label}</span>{id === 'alerts' && activeAlerts > 0 && <em>{activeAlerts}</em>}</button>)}</nav>
+          <div className="sidebar-bottom"><div className="integration"><b><i /> {apiStatus === 'demo' ? 'Modo demonstração' : apiStatus === 'connected' ? 'API conectada' : apiStatus === 'error' ? 'API indisponível' : 'Verificando API'}</b><small>{onlineSensors}/{sensors.length} sensores online</small></div><div className="profile"><b>{user.name}</b><small>{user.role} · <button onClick={handleLogout}>Sair ↗</button></small></div></div>
+        </aside>
+
+        <main className="main-area">
+          <header className="topbar"><div className="crumb">Operação&nbsp; / &nbsp;{heading}</div><div className="top-right"><div className="live"><b>● Dados operacionais</b><small>{lastReading ? dateTime(lastReading.timestamp) : 'Sem leituras'}</small></div><button className="bell" onClick={() => setPage('alerts')}>♧</button><div className="top-user"><b>{user.name}</b><small>{user.role}</small></div></div></header>
+
+          <div className="content">
+            <div className="page-content">
+              <div className={`page-${page}`}>
+                <div className="page-heading"><div><h1>{heading}</h1><p>{description}</p></div>{pageAction[page]?.()}</div>
+
+                {page === 'overview' && <>
+                  <div className="metric-grid">
+                    <Metric label="Peças no turno" value={number(totals.total)} note={`${hourly.length} registros horários`} />
+                    <Metric label="Peças metálicas" value={number(totals.metallic)} note={`${totals.metallicPercent}% do total`} accent />
+                    <Metric label="Peças não metálicas" value={number(totals.nonMetallic)} note={`${totals.nonMetallicPercent}% do total`} />
+                    <Metric label="Nível do reservatório" value={percent(reservoir.currentLevel)} note={`Atenção a partir de ${reservoir.attentionThreshold}%`} warn={reservoir.currentLevel >= reservoir.attentionThreshold} />
+                  </div>
+                  <div className="two-col">
+                    <Card title="Evolução da triagem" extra={<span className="muted">{station.name}</span>}>
+                      <div className="chart-area"><div className="chart-labels">{['100', '75', '50', '25', '0'].map((label) => <span key={label}>{label}</span>)}</div><LineChart series={[{ label: 'Metálicas por hora', color: 'teal', values: hourly.map((item) => item.metallic) }, { label: 'Não metálicas por hora', color: 'blue', values: hourly.map((item) => item.nonMetallic) }]} /></div>
+                      <div className="legend"><span><i className="dot teal" /> Metálicas por hora</span><span><i className="dot blue" /> Não metálicas por hora</span></div>
+                    </Card>
+                    <ReservoirCard reservoir={reservoir} />
+                  </div>
+                  <div className="two-col"><Card title="Leituras recentes"><DataTable rows={readingsData.slice(0, 5)} onSelect={setSelected} selected={selected} /></Card>
+                    <Card title="Saúde da integração"><div className="health"><b><i className="dot teal" /> Sistema operacional</b><span className="tag success">{onlineSensors === sensors.length ? 'Conectado' : 'Instável'}</span></div>
+                      {sensors.map((sensor) => <div className="health-row" key={sensor.id}><span>{sensorLabel(sensor.type)}</span><b>{sensor.status}</b></div>)}
+                      <div className="health-row"><span>Última sincronização</span><b>{lastReading ? dateTime(lastReading.timestamp) : '—'}</b></div>
+                    </Card>
+                  </div>
+                </>}
+
+                {page === 'station' && <>
+                  <Card className="station-summary"><div><small>{station.id}</small><h2>{settings.name}</h2><p className="muted">{settings.location} · {station.shift}</p></div><div className="summary-status"><span className="tag success">● {station.status}</span><small>Última leitura: {lastReading ? dateTime(lastReading.timestamp) : '—'}</small></div></Card>
+                  <div className="two-col station-cols"><Card title="Da detecção à classificação"><p className="muted">Leitura combinada dos sensores · peça #{lastReading?.id ?? '—'}</p><div className="process">
+                    {[['01', 'Distância', 'Passagem detectada'], ['02', 'Indutivo', 'Metal detectado'], ['03', 'Capacitivo', 'Material presente'], ['04', 'Classificação', lastReading?.classification ?? 'Aguardando leitura']].map(([step, name, detail], index) => <div className={index === 3 ? 'process-step final' : 'process-step'} key={step}><small>{step}</small><b>{name}</b><span>{detail}</span></div>)}
+                  </div><p className="muted tiny">Indutivo e capacitivo ativos classificam a peça como metálica. Somente capacitivo ativo indica peça não metálica.</p></Card><ReservoirCard reservoir={reservoir} /></div>
+                  <div className="sensor-grid">{sensors.map((sensor) => <Sensor key={sensor.id} sensor={sensor} />)}</div>
+                  <div className="notice"><div><b>Coleta automatizada</b><p>Envio HTTP a cada {data.configuration.collection.intervalSeconds} s · Controlador {station.controllerId} · HTTPS ativo</p></div><button onClick={() => setPage('settings')}>Ver configurações →</button></div>
+                </>}
+
+                {page === 'analytics' && <>
+                  <div className="filter-bar"><select aria-label="Estação"><option>{station.name}</option></select><select aria-label="Período"><option>Turno atual</option></select><span className="muted">{hourly.length} amostras horárias</span></div>
+                  <div className="analytics-grid"><Card title="Nível do reservatório ao longo do turno"><p className="muted">Nível (%)</p><LineChart series={[{ label: 'Nível', color: 'teal', values: hourly.map((item) => item.reservoirLevel) }]} /></Card>
+                    <Card title="Composição da produção"><p className="muted">{number(totals.total)} peças classificadas</p><HorizontalBar label="Metálicas" value={`${number(totals.metallic)} · ${totals.metallicPercent}%`} percent={totals.metallicPercent} /><HorizontalBar label="Não metálicas" value={`${number(totals.nonMetallic)} · ${totals.nonMetallicPercent}%`} percent={totals.nonMetallicPercent} blue /></Card>
+                    <Card title="Frequência do nível do reservatório"><p className="muted">Número de amostras por faixa (%)</p><Histogram values={hourly.map((item) => item.reservoirLevel)} /></Card>
+                    <Card title="Dispersão e possíveis outliers"><p className="muted">Boxplot · Nível do reservatório (%)</p><div className="boxplot"><i /><b /><i /></div><p className="muted tiny">Distribuição calculada a partir das amostras recebidas.</p></Card>
+                  </div>
+                  <Card title="Estatística descritiva"><p className="muted">Contagem por hora e nível do reservatório · {hourly.length} amostras</p><StatsTable hourly={hourly} /></Card>
+                </>}
+
+                {page === 'history' && <>
+                  <div className="filter-bar"><select aria-label="Data"><option>{readingsData[0] ? dateLabel(readingsData[0].timestamp) : 'Sem data'}</option></select><select aria-label="Estação"><option>{station.name}</option></select><select value={historyType} onChange={(event) => setHistoryType(event.target.value)} aria-label="Tipo"><option>Todas</option><option>Metálica</option><option>Não metálica</option></select><input placeholder="Buscar ID de leitura" value={search} onChange={(event) => setSearch(event.target.value)} /><button className="soft" onClick={() => notify(`${visibleReadings.length} leituras encontradas`)}>Aplicar filtros</button></div>
+                  <div className="history-layout"><Card title="Leituras da esteira" extra={<small className="muted">{visibleReadings.length} registros encontrados</small>}><DataTable rows={visibleReadings} onSelect={setSelected} selected={selected} /><div className="pagination">Exibindo {visibleReadings.length} de {readingsData.length} <span>‹ 1 ›</span></div></Card>
+                    <Card title="Detalhe da leitura selecionada">{selected ? <><div className="reading-title"><h2>#{selected.id}</h2><span className="tag success">{selected.status}</span></div><small className="muted">{dateLabel(selected.timestamp)} · {dateTime(selected.timestamp)}</small>
+                      {[['Estação', station.name], ['Classificação', selected.classification], ['Indutivo', selected.inductive ? '1 · Metal detectado' : '0 · Metal não detectado'], ['Capacitivo', selected.capacitive ? '1 · Material presente' : '0 · Sem material'], ['Distância', `${selected.distance} cm`], ['Nível calculado', percent(selected.reservoirLevel)]].map(([label, value]) => <div className="detail-row" key={label}><span>{label}</span><b>{value}</b></div>)}
+                      <div className="trace"><b>Rastreabilidade</b><p>Origem: {station.controllerId} → API REST</p><p>Validação: {selected.status}</p><strong>Identificador: {selected.id}</strong></div></> : <p className="muted">Selecione uma leitura para consultar os detalhes.</p>}</Card>
+                  </div>
+                  <div className="notice simple">Classificação automática baseada nos estados dos sensores indutivo e capacitivo.</div>
+                </>}
+
+                {page === 'alerts' && <>
+                  <div className="metric-grid three"><Metric label="Alertas ativos" value={number(activeAlerts)} note="Exigem acompanhamento" warn={activeAlerts > 0} /><Metric label="Nível crítico" value={number(alerts.filter((alert) => alert.severity === 'Crítico').length)} note={`Limite crítico: ${reservoir.criticalThreshold}%`} /><Metric label="Resolvidos" value={number(resolvedAlerts)} note="Ocorrências finalizadas" /></div>
+                  <div className="alerts-layout"><Card title="Ocorrências do turno" extra={<div className="tabs">{['Todas', 'Ativas', 'Resolvidas'].map((tab) => <button className={filter === tab ? 'selected' : ''} onClick={() => setFilter(tab)} key={tab}>{tab}</button>)}</div>}>
+                    <div className="alert-list">{visibleAlerts.map((alert) => <button className="alert-row" key={alert.id} onClick={() => setSelectedAlert(alert)}><span className={alert.status === 'Em aberto' ? 'alert-mark' : 'resolved-mark'} /><span><b>{alert.title}</b><small>{dateTime(alert.occurredAt)} · {station.name}</small></span><em className={alert.status === 'Em aberto' ? 'tag warning' : 'tag success'}>{alert.status}</em></button>)}</div>
+                  </Card><Card title="Tratamento do alerta">{selectedAlert ? <><span className="tag warning">{selectedAlert.severity} · #{selectedAlert.id}</span><h2 className="alert-detail-title">{selectedAlert.title}</h2><p className="muted">{dateTime(selectedAlert.occurredAt)} · {dateLabel(selectedAlert.occurredAt)}</p>
+                    <div className="detail-row"><span>Nível atual</span><b className="tank-orange">{selectedAlert.reservoirLevel == null ? '—' : percent(selectedAlert.reservoirLevel)}</b></div><div className="detail-row"><span>Critério de disparo</span><b>Reservatório ≥ {thresholds.attention}%</b></div><p className="muted">Ação recomendada</p><p>{selectedAlert.reservoirLevel >= thresholds.attention ? `Planeje o esvaziamento antes de atingir ${thresholds.critical}%.` : 'Verifique a ocorrência e acompanhe a operação.'}</p>
+                    <textarea placeholder="Adicionar observação da equipe..." value={comment} onChange={(event) => setComment(event.target.value)} />{selectedAlert.status === 'Resolvido' ? <button className="primary" disabled>Alerta resolvido</button> : action(selectedAlert.status === 'Em aberto' ? 'Reconhecer alerta' : 'Resolver alerta', async () => { const nextStatus = selectedAlert.status === 'Em aberto' ? 'Reconhecido' : 'Resolvido'; try { const updated = await api.updateAlert(selectedAlert.id, { status: nextStatus, comment, acknowledgedAt: nextStatus === 'Reconhecido' ? new Date().toISOString() : undefined, resolvedAt: nextStatus === 'Resolvido' ? new Date().toISOString() : undefined }); setAlerts((current) => current.map((item) => item.id === updated.id ? updated : item)); setSelectedAlert(updated); setComment(''); notify(`Alerta ${nextStatus.toLowerCase()}`) } catch (error) { notify(error.message) } })}<small className="muted tiny">O reconhecimento deverá ser persistido pela API quando a integração estiver disponível.</small></> : <p className="muted">Selecione um alerta.</p>}</Card></div>
+                </>}
+
+                {page === 'users' && <>
+                  <div className="users-layout"><Card title="Equipe da fábrica" extra={<small className="muted">{users.length} usuários · {users.filter((item) => item.status === 'Ativo').length} ativos · {users.filter((item) => item.status === 'Pendente').length} convites pendentes</small>}>
+                    <table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map((item) => <tr key={item.id ?? item.email}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role}</td><td><span className={item.status === 'Ativo' ? 'tag success' : 'tag warning'}>{item.status}</span></td><td><button className="text-action" onClick={async () => { const name = window.prompt('Nome do usuário:', item.name); if (name === null) return; const email = window.prompt('E-mail:', item.email); if (email === null) return; const role = window.prompt('Perfil (Operador, Analista ou Administrador):', item.role); if (role === null) return; if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['Operador', 'Analista', 'Administrador'].includes(role)) { notify('Confira nome, e-mail e perfil'); return } try { await api.updateUser(item.id, { name: name.trim(), email: email.trim(), role }); setUsers(await api.listUsers()); notify('Usuário atualizado') } catch (error) { notify(error.message) } }}>Editar</button> <button className="text-action" onClick={async () => { if (!window.confirm(`Excluir ${item.name}?`)) return; try { await api.deleteUser(item.id); setUsers(await api.listUsers()); notify('Usuário excluído') } catch (error) { notify(error.message) } }}>Excluir</button></td></tr>)}</tbody></table>
+                  </Card><Card title="Convidar usuário"><p className="muted">Envie um convite com o perfil adequado.</p><label className="field"><span>Nome</span><input id="invite-name" value={invite.name} onChange={(event) => setInvite({ ...invite, name: event.target.value })} placeholder="Nome completo" /></label><label className="field"><span>E-mail corporativo</span><input type="email" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} placeholder="nome@metaltech.com.br" /></label><label className="field"><span>Perfil de acesso</span><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value })}>{['Operador', 'Analista', 'Administrador'].map((role) => <option key={role}>{role}</option>)}</select></label>{action('Enviar convite', async () => { if (!invite.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email)) { notify('Informe nome e e-mail válido'); return } setBusy(true); try { await api.createUser(invite); setUsers(await api.listUsers()); setInvite({ name: '', email: '', role: 'Operador' }); notify(isDemoMode() ? 'Usuário salvo neste navegador' : 'Convite enviado pela API') } catch (error) { notify(error.message) } finally { setBusy(false) } })}</Card></div>
+                  <Card title="Permissões por perfil"><p className="muted">Aplique o menor privilégio necessário para cada integrante.</p><table className="stats-table permission-table"><thead><tr><th>RECURSO</th><th>OPERADOR</th><th>ANALISTA</th><th>ADMINISTRADOR</th></tr></thead><tbody>{data.account.permissions.map((row) => <tr key={row.resource}>{[row.resource, row.operator, row.analyst, row.administrator].map((value, index) => <td key={`${row.resource}-${index}`} className={index > 0 && value === 'Permitido' ? 'allowed' : ''}>{value}</td>)}</tr>)}</tbody></table></Card>
+                </>}
+
+                {page === 'settings' && <>
+                  <div className="settings-grid"><Card title="Critérios de alerta"><p className="muted">Reservatório e detecção de comportamento anormal.</p><div className="form-grid">{field('Nível de atenção (%)', 'attention', 'number')}{field('Nível crítico (%)', 'critical', 'number')}{field('Variação em 5 minutos (p.p.)', 'variationInFiveMinutes', 'number')}{field('Intervalo de coleta (s)', 'intervalSeconds', 'number')}</div><small className="orange-text">Atenção: {settings.attention}–{settings.critical}% · Crítico: ≥ {settings.critical}%</small></Card>
+                    <Card title="Integração da plataforma"><div className="card-status"><span className="tag success">● Conectada</span></div><p className="muted">O dashboard e os dispositivos conectados utilizam a mesma API.</p>{field('Endereço da API', 'apiUrl')}<div className="form-grid">{field('Identificador do controlador', 'controllerId')}{field('Intervalo de atualização (s)', 'refreshSeconds', 'number')}</div><button className="soft" onClick={async () => { try { const result = await api.health(); setApiStatus(isDemoMode() ? 'demo' : 'connected'); notify(result?.message || 'API respondeu corretamente') } catch (error) { setApiStatus('error'); notify(error.message) } }}>Testar conexão</button></Card>
+                    <Card title="Estação e reservatório"><p className="muted">Parâmetros cadastrados para a estação.</p>{field('Nome da estação', 'name')}{field('Localização', 'location')}<div className="form-grid">{field('Capacidade (peças)', 'reservoirCapacity', 'number')}{field('Altura útil (cm)', 'reservoirHeight', 'number')}</div></Card>
+                    <Card title="Segurança"><p className="muted">Políticas de segurança da conta.</p><div className="health-row"><span>Autenticação em dois fatores</span><b>{data.configuration.security.twoFactorEnabled ? 'Ativada' : 'Desativada'}</b></div><div className="health-row"><span>Tempo limite da sessão</span><b>{data.configuration.security.sessionTimeoutMinutes} min</b></div><label className="remember"><input type="checkbox" checked={Boolean(data.configuration.security.auditEnabled)} readOnly /> Registro de auditoria habilitado</label></Card></div>
+                </>}
+
+                <footer className="footer"><span>MetalTech / Plataforma de inteligência industrial</span><span>{isDemoMode() ? 'Modo demonstração · dados locais' : 'API REST · dados remotos'}</span></footer>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+      {toast && <div className="toast">✓ {toast}</div>}
+    </div>
+  )
+}
+
+function sensorLabel(type) {
+  return ({ distance: 'Sensor de distância', inductive: 'Sensor indutivo', capacitive: 'Sensor capacitivo' })[type] ?? type
+}
+function Metric({ label, value, note, accent, warn }) { return <div className="metric card"><span>{label}</span><strong className={accent ? 'teal-text' : warn ? 'orange-text' : ''}>{value}</strong><small>{note}</small></div> }
+function Card({ title, extra, children, className = '' }) { return <section className={`card panel ${className}`}><div className="panel-head"><h3>{title}</h3>{extra}</div>{children}</section> }
+function Progress({ value }) { return <div className="progress"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div> }
+function ReservoirCard({ reservoir }) {
+  const status = reservoir.currentLevel >= reservoir.criticalThreshold ? 'Crítico' : reservoir.currentLevel >= reservoir.attentionThreshold ? 'Atenção' : 'Normal'
+  const stored = reservoir.capacity * reservoir.currentLevel / 100
+  return <Card title="Reservatório de saída"><div className="tank-number">{percent(reservoir.currentLevel)} <span className={`tag ${status === 'Normal' ? 'success' : 'warning'}`}>{status}</span></div><p className="muted">{number(stored)} peças armazenadas · capacidade: {number(reservoir.capacity)}</p><Progress value={reservoir.currentLevel} /><small>Distância até as peças: {reservoir.distance} cm</small><p className="muted tiny">{status === 'Crítico' ? 'Esvaziamento imediato recomendado.' : status === 'Atenção' ? `Esvaziar antes de atingir ${reservoir.criticalThreshold}%.` : 'Nível dentro da faixa normal.'}</p></Card>
+}
+function Sensor({ sensor }) {
+  const title = sensorLabel(sensor.type)
+  const value = sensor.type === 'distance' ? `${sensor.value} ${sensor.unit}` : sensor.value ? 'Ativo' : 'Inativo'
+  const detail = sensor.type === 'distance' ? 'Nível do reservatório' : sensor.type === 'inductive' ? 'Detecção de metal' : 'Presença de material'
+  return <Card title={title} extra={<span className={`tag ${sensor.status === 'Online' ? 'success' : 'warning'}`}>● {sensor.status}</span>}><small className="muted">{sensor.id} · {sensor.technology}</small><div className="sensor-value">{value}</div><b className="sensor-detail">{detail}</b><small className="muted tiny">Último sinal: {dateTime(sensor.lastSeenAt)}</small></Card>
+}
+function DataTable({ rows, onSelect, selected }) { return <table className="data-table"><thead><tr>{['HORÁRIO', 'ID DA LEITURA', 'TIPO DA PEÇA', 'NÍVEL', 'STATUS'].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((reading) => <tr key={reading.id} className={selected?.id === reading.id ? 'row-selected' : ''} onClick={() => onSelect?.(reading)}><td>{dateTime(reading.timestamp)}</td><td><b>#{reading.id}</b></td><td><span className={reading.classification === 'Metálica' ? 'tag teal-tag' : 'tag blue-tag'}>{reading.classification}</span></td><td>{percent(reading.reservoirLevel)}</td><td className="teal-text">{reading.status}</td></tr>)}</tbody></table> }
+function LineChart({ series = [] }) {
+  const max = Math.max(100, ...series.flatMap((item) => item.values.map(Number)))
+  const pathFor = (values) => values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 600},${160 - (Number(value) / max) * 140}`).join(' ')
+  return <svg className="line-chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img" aria-label="Gráfico de evolução de indicadores"><g stroke="#e7edf2" strokeWidth="1">{[20, 55, 90, 125, 160].map((y) => <path key={y} d={`M0 ${y}H600`} />)}</g>{series.map((item) => <polyline key={item.label} points={pathFor(item.values)} fill="none" stroke={item.color === 'blue' ? '#5478cf' : '#00877f'} strokeWidth="3" strokeDasharray={item.color === 'blue' ? '5 4' : undefined} />)}</svg>
+}
+function HorizontalBar({ label, value, percent: amount, blue }) { return <div className="hbar-row"><span>{label}</span><div><i style={{ width: `${amount}%`, background: blue ? '#5878cf' : '#00877f' }} /></div><b>{value}</b></div> }
+function Histogram({ values }) {
+  const ranges = [{ label: '0–25', min: 0, max: 25 }, { label: '25–50', min: 25, max: 50 }, { label: '50–75', min: 50, max: 75 }, { label: '75–100', min: 75, max: 101 }]
+  const counts = ranges.map((range) => ({ ...range, count: values.filter((value) => value >= range.min && value < range.max).length }))
+  return <div className="histogram">{counts.map((item) => <div key={item.label}><b>{item.count}</b><i style={{ height: `${item.count * 28}px` }} /><small>{item.label}</small></div>)}</div>
+}
+function StatsTable({ hourly }) {
+  const metallic = hourly.map((item) => item.metallic)
+  const nonMetallic = hourly.map((item) => item.nonMetallic)
+  const level = hourly.map((item) => item.reservoirLevel)
+  const rows = [
+    ['Média', avg(metallic), avg(nonMetallic), avg(level)],
+    ['Mediana (Q2)', median(metallic), median(nonMetallic), median(level)],
+    ['Amostras', metallic.length, nonMetallic.length, level.length],
+    ['Mínimo', Math.min(...metallic), Math.min(...nonMetallic), Math.min(...level)],
+    ['Máximo', Math.max(...metallic), Math.max(...nonMetallic), Math.max(...level)],
+  ]
+  return <table className="stats-table"><thead><tr><th>MEDIDA</th><th>METÁLICAS (PEÇAS/H)</th><th>NÃO METÁLICAS (PEÇAS/H)</th><th>NÍVEL (%)</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((value, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? value : Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>)}</tr>)}</tbody></table>
+}
+
 export default App
