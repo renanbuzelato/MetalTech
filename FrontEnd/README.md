@@ -1,16 +1,33 @@
-# React + Vite
+# MetalTech — Front-end
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interface React + Vite baseada nas telas desktop do projeto MetalTech.
 
-Currently, two official plugins are available:
+## Telas incluídas
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Acesso seguro (login demonstrativo)
+- Visão geral
+- Estação e sensores
+- Análises estatísticas
+- Histórico de leituras
+- Central de alertas
+- Usuários e permissões
+- Configurações e integração
 
-## React Compiler
+As interfaces mobile e de realidade aumentada (RA) foram deixadas de fora, conforme solicitado.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Executar localmente
 
-## Expanding the ESLint configuration
+Requisitos: Node.js compatível com a versão do Vite usada no projeto.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
+```
+
+Para validar a versão de produção:
+
+```bash
+npm run build
+```
+
+> Os dados e ações exibidos nesta entrega são demonstrativos e estão no estado local do React. A integração com API/backend ainda precisa ser conectada.
