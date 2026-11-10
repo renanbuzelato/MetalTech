@@ -3,6 +3,7 @@ package br.com.metaltech.projeto.exception;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -16,6 +17,12 @@ public class TratadorDeErros {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public Map<String, String> tratarNaoEncontrado(RecursoNaoEncontradoException excecao) {
         return Map.of("erro", excecao.getMessage());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> tratarConflito(DataIntegrityViolationException excecao) {
+        return Map.of("erro", "Já existe um registro com esses dados");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

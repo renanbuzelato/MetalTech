@@ -28,8 +28,7 @@ public class LeituraReservatorio {
     @Column(nullable = false)
     private double distanciaSensorCm;
 
-    @Column(nullable = false)
-    private double ocupacaoPercentual;
+  
 
     @Column(nullable = false)
     private LocalDateTime dataHoraLeitura;
@@ -41,7 +40,7 @@ public class LeituraReservatorio {
     public LeituraReservatorio(Esteira esteira, double distanciaSensorCm) {
         this.esteira = esteira;
         this.distanciaSensorCm = distanciaSensorCm;
-        this.ocupacaoPercentual = esteira.calcularOcupacaoPercentual(distanciaSensorCm);
+        
         this.dataHoraLeitura = LocalDateTime.now();
     }
 
@@ -54,7 +53,7 @@ public class LeituraReservatorio {
     }
 
     public double getOcupacaoPercentual() {
-        return ocupacaoPercentual;
+        return esteira.calcularOcupacaoPercentual(distanciaSensorCm);
     }
 
     public LocalDateTime getDataHoraLeitura() {

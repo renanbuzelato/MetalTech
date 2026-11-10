@@ -48,6 +48,8 @@ public class MonitoramentoService {
         return leituraRepository.save(leitura);
     }
 
+
+     @Transactional(readOnly = true)
     public List<LeituraReservatorio> listarLeituras(Long esteiraId) {
         esteiraService.buscarPorId(esteiraId);
         return leituraRepository.findByEsteiraIdOrderByDataHoraLeituraAsc(esteiraId);
