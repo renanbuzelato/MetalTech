@@ -29,6 +29,21 @@ services:
     networks:
       - metaltech-net
 
+  # 3. API Back-end Java Spring Boot
+  api-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: metaltech-api
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-db
+      - mqtt-broker
+    networks:
+      - metaltech-net
+
 volumes:
   dados-manutencao:
     external: false
