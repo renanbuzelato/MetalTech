@@ -2,11 +2,13 @@ export const metalTechData = {
   // API: altere mode para "rest" e informe baseUrl quando o backend estiver disponível.
   // Cada endpoint documenta método, payload esperado e finalidade da integração.
   api: {
-    mode: 'demo', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
-    baseUrl: 'https://api-ficticia.metaltech.com.br/v1',
+    mode: 'rest', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
+    baseUrl: 'http://10.110.12.85:8080/api/v1',
     timeoutMs: 12000,
     credentials: 'same-origin',
-    headers: {},
+    headers: {
+      'Content-Type': 'application/json'
+    },
     auth: {
       tokenType: 'Bearer',
       responseTokenField: 'token',
@@ -15,13 +17,18 @@ export const metalTechData = {
     },
     demo: {
       storagePrefix: 'metaltech:',
-      // Modo demo usa os usuários iniciais deste arquivo; senha não é validada.
-      // Não utilize este modo como autenticação de produção.
+      password: 'MetalTech@2026', // senha única para testar o modo demo; não é autenticação de produção.
+    },
+    realtime: {
+      mode: 'auto', // 'auto' tenta SSE/WebSocket e mantém polling como fallback; 'polling' força REST periódico.
+      ssePath: '/events', // contrato opcional: evento JSON com campos users, alerts, readings, sensors, production, settings e station.
+      websocketUrl: '', // opcional: ex. wss://servidor/api/v1/events?token={token}; tem prioridade sobre SSE.
     },
     endpoints: {
       health: { method: 'GET', path: '/health' }, // disponibilidade da API
       auth: {
         login: { method: 'POST', path: '/auth/login' }, // body: { email, password }; response: { token, user }
+        register: { method: 'POST', path: '/auth/register' }, // cadastro público: { name, email, password }; resposta { message }; criar usuário com status Pendente e perfil Operador
         logout: { method: 'POST', path: '/auth/logout' }, // invalida token/sessão
         me: { method: 'GET', path: '/auth/me' }, // usuário autenticado
         refresh: { method: 'POST', path: '/auth/refresh' }, // body: { refreshToken }; response: { token, refreshToken }
@@ -29,7 +36,7 @@ export const metalTechData = {
       users: {
         list: { method: 'GET', path: '/users' }, // response: User[] ou { data: User[] }
         create: { method: 'POST', path: '/users' }, // body: { name, email, role }; response: User
-        update: { method: 'PATCH', path: '/users/:id' }, // :id = usuário; body: campos alterados
+        update: { method: 'PATCH', path: '/users/:id' }, // :id = usuário; body: { name?, email?, role?, status?, permissions? }
         delete: { method: 'DELETE', path: '/users/:id' }, // :id = usuário
       },
       stations: {
