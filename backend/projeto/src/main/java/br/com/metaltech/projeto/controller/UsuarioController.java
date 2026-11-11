@@ -19,7 +19,7 @@ import br.com.metaltech.projeto.service.UsuarioService;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/usuarios")
+@RequestMapping("/api/user")
 public class UsuarioController {
 
     private final UsuarioService usuarioService;
