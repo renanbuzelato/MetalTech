@@ -152,3 +152,63 @@ Para produção, o backend também deve validar permissões em **todas** as rota
 ## Contrato de permissões
 
 Chaves de acesso: páginas `overview`, `station`, `analytics`, `history`, `alerts`, `users`, `settings`; ações `exportData`, `manageAlerts`, `manageUsers` e `manageSettings`. A atualização das permissões deve retornar o usuário atualizado e a lista de permissões efetiva. A API deve também invalidar ou atualizar as permissões da sessão quando um administrador alterar acessos de alguém.
+
+## Contrato obrigatório da API REST (modo `rest`)
+
+O frontend não cria rotas HTTP no servidor. As rotas abaixo são o contrato que o backend deve implementar. A configuração canônica está em `src/data/metaltechData.jsx`, em `api.endpoints`, incluindo método, caminho e observações de payload/resposta. No modo `rest`, os dados de demonstração de `session`, `operation`, `account` e `configuration` não são usados como fallback visual.
+
+### Autenticação e sessão
+
+| Método | Rota | Payload / resposta esperada |
+|---|---|---|
+| POST | `/auth/login` | `{ email, password }` → `{ token, user }` |
+| POST | `/auth/register` | `{ name, email, password }` → `{ message, user? }`; criar usuário pendente |
+| POST | `/auth/logout` | Invalida a sessão/token |
+| GET | `/auth/me` | Retorna o usuário autenticado completo |
+| POST | `/auth/refresh` | `{ refreshToken }` → `{ token, refreshToken }` |
+
+### Operação, sensores e leituras
+
+| Método | Rota | Resposta esperada |
+|---|---|---|
+| GET | `/stations/current` | `{ id, name, location, status, shift, controllerId }` |
+| GET | `/stations` | Lista de estações |
+| GET | `/sensors` | Lista `{ id, type, technology, value, unit, status, lastSeenAt }` |
+| GET | `/sensors/readings` | Leituras filtradas por estação/sensor/período |
+| GET | `/sensors/readings/latest` | Última leitura por sensor |
+| GET | `/sensors/status` | Estado e `lastSeenAt` de cada sensor |
+| GET | `/reservoir/status` | `{ currentLevel, distance, capacity, attentionThreshold, criticalThreshold, storedPieces, updatedAt }` |
+| GET | `/readings` | Lista `{ id, timestamp, classification, inductive, capacitive, distance, reservoirLevel, status }` |
+| GET | `/readings/:id` | Detalhe e rastreabilidade da leitura |
+| GET | `/readings/export` | Lista filtrada para exportação CSV |
+
+### Análises e alertas
+
+| Método | Rota | Resposta esperada |
+|---|---|---|
+| GET | `/analytics/overview` | KPIs consolidados: `totalPieces`, `metallicPieces`, `nonMetallicPieces`, percentuais, período e atualização |
+| GET | `/analytics/production` | Série `[{ hour, metallic, nonMetallic, reservoirLevel }]` |
+| GET | `/analytics/reservoir` | Série `[{ timestamp, level, distance }]` |
+| GET | `/alerts` | Lista `{ id, title, occurredAt, status, severity, reservoirLevel, stationId }` |
+| GET | `/alerts/:id` | Detalhe do alerta |
+| PATCH | `/alerts/:id` | `{ status, comment?, acknowledgedAt?, resolvedAt? }` → alerta atualizado |
+
+### Usuários, permissões e configurações
+
+| Método | Rota | Payload / resposta esperada |
+|---|---|---|
+| GET | `/users` | Lista de usuários com `id`, `name`, `email`, `role`, `status`, `permissions` |
+| POST | `/users` | `{ name, email, role }` → usuário criado |
+| PATCH | `/users/:id` | Campos alterados, incluindo `permissions` → usuário atualizado |
+| DELETE | `/users/:id` | Remove usuário |
+| GET | `/permissions/roles` | Matriz `{ resource, operator, analyst, administrator }` |
+| GET | `/settings` | Configurações agrupadas em `alertThresholds`, `collection`, `integration`, `station` e `security` |
+| PUT | `/settings` | Recebe o mesmo objeto de configurações e retorna o objeto persistido |
+| GET | `/audit-logs` | Histórico de auditoria filtrável |
+| GET | `/health` | Estado de disponibilidade da API |
+
+### Tempo real
+
+O backend pode fornecer SSE em `GET /events` ou WebSocket conforme `api.realtime` em `metaltechData.jsx`. Cada evento deve enviar JSON no formato `{ type, data }`, com os recursos alterados em `data` (por exemplo `readings`, `sensors`, `production`, `alerts`, `users`, `settings`, `station` e `reservoir`). O polling REST continua ativo como fallback e sincroniza o snapshot completo.
+
+**Envelope de resposta:** endpoints de lista podem responder `[]` ou `{ data: [] }`; endpoints de objeto podem responder `{ ... }` ou `{ data: { ... } }`. Erros devem usar status HTTP apropriado e JSON `{ message, code?, details? }`. Datas devem ser ISO-8601 com fuso horário. O backend deve aplicar autorização por usuário em todas as rotas protegidas; ocultar controles na interface não substitui autorização no servidor.

@@ -3,8 +3,8 @@ import { metalTechData as data } from './data/metaltechData'
 import { api, getStoredSession, isDemoMode } from './services/api'
 import './App.css'
 
-const number = (value) => Number(value || 0).toLocaleString('pt-BR')
-const percent = (value) => `${Number(value || 0)}%`
+const number = (value) => value == null ? '—' : Number(value || 0).toLocaleString('pt-BR')
+const percent = (value) => value == null ? '—' : `${Number(value || 0)}%`
 const dateTime = (value) => new Date(value).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const dateLabel = (value) => new Date(value).toLocaleDateString('pt-BR')
 const avg = (values) => values.length ? values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length : 0
@@ -16,45 +16,85 @@ const median = (values) => {
 }
 
 function App() {
-  const [station, setStation] = useState(data.operation.station)
-  const [readingsData, setReadingsData] = useState(data.operation.readings)
-  const [hourly, setHourly] = useState(data.operation.hourlyProduction)
-  const [sensors, setSensors] = useState(data.operation.sensors)
-  const [alerts, setAlerts] = useState(data.operation.alerts)
+  // Sementes locais são utilizadas exclusivamente no modo demo. No REST, a UI inicia vazia e aguarda a API.
+  const demo = isDemoMode()
+  const [station, setStation] = useState(() => demo ? data.operation.station : {})
+  const [readingsData, setReadingsData] = useState(() => demo ? data.operation.readings : [])
+  const [hourly, setHourly] = useState(() => demo ? data.operation.hourlyProduction : [])
+  const [sensors, setSensors] = useState(() => demo ? data.operation.sensors : [])
+  const [alerts, setAlerts] = useState(() => demo ? data.operation.alerts : [])
+  const [reservoirData, setReservoirData] = useState(() => demo ? data.operation.reservoir : {})
+  const [rolePermissionRows, setRolePermissionRows] = useState(() => demo ? data.account.permissions : [])
+  const [, setOverviewData] = useState(null)
   const [user, setUser] = useState(() => getStoredSession())
-  const thresholds = data.configuration.alertThresholds
+
 
   const [page, setPage] = useState('overview')
   const [filter, setFilter] = useState('Todas')
   const [historyType, setHistoryType] = useState('Todas')
   const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState(readingsData[0] ?? null)
-  const [selectedAlert, setSelectedAlert] = useState(data.operation.alerts[0] ?? null)
+  const [selected, setSelected] = useState(() => (demo ? data.operation.readings[0] : null))
+  const [selectedAlert, setSelectedAlert] = useState(() => (demo ? data.operation.alerts[0] : null))
   const [comment, setComment] = useState('')
   const [toast, setToast] = useState('')
-  const [users, setUsers] = useState(data.account.users)
+  const [users, setUsers] = useState(() => demo ? data.account.users : [])
   const [busy, setBusy] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [loginNotice, setLoginNotice] = useState('')
   const [apiStatus, setApiStatus] = useState(isDemoMode() ? 'demo' : 'checking')
+  const [apiErrors, setApiErrors] = useState([])
   const [invite, setInvite] = useState({ name: '', email: '', role: 'Operador' })
-  const [settings, setSettings] = useState({
-    ...thresholds,
+  const [settings, setSettings] = useState(() => demo ? ({
+    ...data.configuration.alertThresholds,
     ...data.configuration.collection,
     ...data.configuration.integration,
     ...data.configuration.station,
-  })
-  const reservoir = { ...data.operation.reservoir, currentLevel: readingsData[0]?.reservoirLevel ?? data.operation.reservoir.currentLevel, distance: readingsData[0]?.distance ?? data.operation.reservoir.distance, capacity: settings.reservoirCapacity, attentionThreshold: settings.attention, criticalThreshold: settings.critical }
+  }) : {})
+  const thresholds = { attention: Number(settings?.attention ?? 0), critical: Number(settings?.critical ?? 0) }
+  const reservoir = {
+    ...reservoirData,
+    currentLevel: reservoirData.currentLevel ?? readingsData[0]?.reservoirLevel ?? null,
+    distance: reservoirData.distance ?? readingsData[0]?.distance ?? null,
+    capacity: reservoirData.capacity ?? settings.reservoirCapacity ?? null,
+    attentionThreshold: settings.attention ?? reservoirData.attentionThreshold ?? null,
+    criticalThreshold: settings.critical ?? reservoirData.criticalThreshold ?? null,
+  }
   const canAdmin = user?.role === 'Administrador'
-  const permissionKeys = ['overview', 'station', 'analytics', 'history', 'alerts', 'users', 'settings', 'exportData', 'manageAlerts', 'manageUsers', 'manageSettings']
+  const permissionKeys = [
+    'overview', 
+    'station', 
+    'analytics', 
+    'history', 
+    'alerts', 
+    'users', 
+    'settings', 
+    'exportData', 
+    'manageAlerts', 
+    'manageUsers', 
+    'manageSettings'
+  ]
   const rolePermissions = {
     Administrador: permissionKeys,
-    Analista: ['overview', 'station', 'analytics', 'history', 'alerts', 'exportData'],
-    Operador: ['overview', 'station', 'history', 'alerts', 'manageAlerts'],
+    Analista: [
+      'overview', 
+      'station', 
+      'analytics', 
+      'history', 
+      'alerts', 
+      'exportData'
+    ],
+    Operador: [
+      'overview', 
+      'station', 
+      'history', 
+      'alerts', 
+      'manageAlerts'
+    ],
   }
   const canAccess = (key) => {
     if (Array.isArray(user?.permissions)) return user.permissions.includes(key)
     if (user?.permissions && typeof user.permissions === 'object' && key in user.permissions) return Boolean(user.permissions[key])
+    if (!isDemoMode()) return false // no REST: nunca inferir permissão a partir de perfil local
     return (rolePermissions[user?.role] ?? []).includes(key)
   }
   const [showLogin, setShowLogin] = useState(() => !getStoredSession())
@@ -77,6 +117,7 @@ function App() {
 
     const applySnapshot = (snapshot = {}) => {
       if (!active || !snapshot || typeof snapshot !== 'object') return
+      if (snapshot.currentUser && typeof snapshot.currentUser === 'object') setUser(snapshot.currentUser)
       if (Array.isArray(snapshot.users)) setUsers(snapshot.users)
       if (Array.isArray(snapshot.alerts)) {
         setAlerts(snapshot.alerts)
@@ -87,6 +128,9 @@ function App() {
         setSelected((current) => snapshot.readings.find((item) => item.id === current?.id) || snapshot.readings[0] || null)
       }
       if (Array.isArray(snapshot.sensors)) setSensors(snapshot.sensors)
+      if (snapshot.reservoir && typeof snapshot.reservoir === 'object') setReservoirData(snapshot.reservoir)
+      if (Array.isArray(snapshot.rolePermissions)) setRolePermissionRows(snapshot.rolePermissions)
+      if (snapshot.overview && typeof snapshot.overview === 'object') setOverviewData(snapshot.overview)
       if (Array.isArray(snapshot.production)) setHourly(snapshot.production)
       if (snapshot.station && typeof snapshot.station === 'object') setStation(snapshot.station)
       if (snapshot.settings && typeof snapshot.settings === 'object') {
@@ -107,6 +151,7 @@ function App() {
       try {
         const snapshot = await api.refreshAll()
         applySnapshot(snapshot)
+        if (active) setApiErrors(snapshot.errors ?? [])
         if (active) setApiStatus(isDemoMode() ? 'demo' : snapshot.errors?.length ? 'partial' : 'connected')
       } catch {
         if (active) setApiStatus('error')
@@ -135,17 +180,65 @@ function App() {
   }, [user, settings.refreshSeconds])
 
   const pageInfo = {
-    overview: ['Visão geral', 'Acompanhe os indicadores da sua operação em tempo real.'],
-    station: ['Estação e sensores', 'Detalhes da linha, leituras e classificação das peças.'],
-    analytics: ['Análises estatísticas', 'Transforme as leituras do turno em decisões operacionais.'],
-    history: ['Histórico de leituras', 'Rastreabilidade de cada leitura e classificação da esteira.'],
-    alerts: ['Central de alertas', 'Priorize ocorrências e acompanhe as ações da equipe.'],
-    users: ['Usuários e permissões', 'Gerencie os integrantes e seus níveis de acesso.'],
-    settings: ['Configurações', 'Integração, segurança, critérios de alerta e permissões individuais.'],
+    overview: [
+      'Visão geral', 
+      'Acompanhe os indicadores da sua operação em tempo real.'
+    ],
+    station: [
+      'Estação e sensores', 
+      'Detalhes da linha, leituras e classificação das peças.'
+    ],
+    analytics: [
+      'Análises estatísticas', 
+      'Transforme as leituras do turno em decisões operacionais.'
+    ],
+    history: [
+      'Histórico de leituras', 
+      'Rastreabilidade de cada leitura e classificação da esteira.'
+    ],
+    alerts: [
+      'Central de alertas', 
+      'Priorize ocorrências e acompanhe as ações da equipe.'
+    ],
+    users: [
+      'Usuários e permissões', 
+      'Gerencie os integrantes e seus níveis de acesso.'
+    ],
+    settings: [
+      'Configurações', 
+      'Integração, segurança, critérios de alerta e permissões individuais.'
+    ],
   }
   const navItems = [
-    ['overview', '▦', 'Visão geral'], ['station', '♧', 'Estação e sensores'], ['analytics', '⌁', 'Análises'],
-    ['history', '◴', 'Histórico'], ['alerts', '⚠', 'Alertas'], ['users', '♙', 'Usuários e acesso'], ['settings', '☷', 'Configurações'],
+    [
+      'overview', 
+      '▦', 'Visão geral'
+    ], [
+      'station', 
+      '♧', 
+      'Estação e sensores'
+    ], [
+      'analytics', 
+      '⌁', 
+      'Análises'
+    ],
+    [
+      'history', 
+      '◴', 
+      'Histórico'
+    ], [
+      'alerts', 
+      '⚠', 
+      'Alertas'
+    ], [
+      'users', 
+      '♙', 
+      'Usuários e acesso'
+    ], [
+      'settings', 
+      '☷', 
+      'Configurações'
+    ],
   ]
   const [heading, description] = pageInfo[page] ?? pageInfo.overview
   const selectedPermissionUser = users.find((item) => String(item.id) === String(permissionUserId))
@@ -153,7 +246,7 @@ function App() {
     ? selectedPermissionUser.permissions.reduce((acc, key) => ({ ...acc, [key]: true }), {})
     : selectedPermissionUser?.permissions && typeof selectedPermissionUser.permissions === 'object'
       ? selectedPermissionUser.permissions
-      : (rolePermissions[selectedPermissionUser?.role] ?? rolePermissions.Operador).reduce((acc, key) => ({ ...acc, [key]: true }), {})
+      : (isDemoMode() ? (rolePermissions[selectedPermissionUser?.role] ?? rolePermissions.Operador) : []).reduce((acc, key) => ({ ...acc, [key]: true }), {})
   const selectedPermissions = permissionDraft[permissionUserId] ?? defaultPermissionMap
 
   const totals = useMemo(() => {
@@ -175,7 +268,11 @@ function App() {
   const lastReading = readingsData[0]
 
   const changeSetting = (key, value) => setSettings((current) => ({ ...current, [key]: value }))
-  const field = (label, key, type = 'text') => <label className="field" key={key}><span>{label}</span><input type={type} value={settings[key] ?? ''} onChange={(event) => changeSetting(key, type === 'number' ? Number(event.target.value) : event.target.value)} /></label>
+  const field = (label, key, type = 'text') => 
+        <label className="field" key={key}>
+              <span>{label}</span>
+              <input type={type} value={settings[key] ?? ''} onChange={(event) => changeSetting(key, type === 'number' ? Number(event.target.value) : event.target.value)} />
+        </label>
   const action = (label, fn) => <button className="primary" onClick={fn}>{label}</button>
   const handleLogin = async (event) => {
     event?.preventDefault()
@@ -240,7 +337,14 @@ function App() {
       setRegistrationBusy(false)
     }
   }
-  const handleLogout = async () => { await api.logout(); setUser(null); setShowLogin(true); setPage('overview'); setAuthView('login'); notify('Sessão encerrada') }
+  const handleLogout = async () => { 
+    await api.logout(); 
+    setUser(null); 
+    setShowLogin(true); 
+    setPage('overview'); 
+    setAuthView('login'); 
+    notify('Sessão encerrada') 
+  }
   const saveSettings = async () => {
     setBusy(true)
     try {
@@ -256,7 +360,16 @@ function App() {
   const exportCsv = async () => {
     try {
       const rows = await api.exportReadings({ stationId: station.id })
-      const headers = ['id', 'timestamp', 'classification', 'inductive', 'capacitive', 'distance', 'reservoirLevel', 'status']
+      const headers = [
+        'id', 
+        'timestamp', 
+        'classification', 
+        'inductive', 
+        'capacitive', 
+        'distance', 
+        'reservoirLevel', 
+        'status'
+      ]
       const csv = [headers.join(';'), ...rows.map((row) => headers.map((key) => JSON.stringify(row[key] ?? '')).join(';'))].join('\n')
       const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }))
       const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'metaltech-leituras.csv'; anchor.click(); URL.revokeObjectURL(url)
@@ -265,10 +378,8 @@ function App() {
   }
   const pageAction = {
     overview: () => canAccess('exportData') ? <button className="outline" onClick={exportCsv}>↓ Exportar resumo</button> : null,
-    station: () => canAccess('manageSettings') ? action('Editar estação', () => setPage('settings')) : null,
     analytics: () => canAccess('exportData') ? <button className="primary" onClick={exportCsv}>↓ Exportar relatório</button> : null,
     history: () => canAccess('exportData') ? <button className="outline" onClick={exportCsv}>↓ Exportar CSV</button> : null,
-    alerts: () => canAccess('manageSettings') ? action('Configurar regras', () => setPage('settings')) : null,
     users: () => canAccess('manageUsers') ? action('Convidar usuário', () => document.getElementById('invite-name')?.focus()) : null,
     settings: () => canAccess('manageSettings') ? <button className="primary" disabled={busy} onClick={saveSettings}>{busy ? 'Salvando...' : 'Salvar alterações'}</button> : null,
   }
@@ -282,24 +393,53 @@ function App() {
       </section>
       <section className="login-form">
         {authView === 'login' ? <form className="login-card" noValidate onSubmit={handleLogin}>
-          <div className="eyebrow">BEM-VINDO DE VOLTA</div><h2>Acesse sua plataforma</h2><p>Entre com suas credenciais para acompanhar a operação.</p>
-          <label className="field"><span>E-mail corporativo</span><input type="email" autoComplete="username" required disabled={busy} aria-invalid={Boolean(loginError)} placeholder="nome@empresa.com.br" value={login.email} onChange={(event) => { setLogin({ ...login, email: event.target.value }); setLoginError('') }} /></label>
-          <label className="field"><span>Senha</span><input type="password" autoComplete="current-password" required disabled={busy} aria-invalid={Boolean(loginError)} placeholder="Digite sua senha" value={login.password} onChange={(event) => { setLogin({ ...login, password: event.target.value }); setLoginError('') }} /></label>
-          <label className="remember"><input type="checkbox" checked={login.remember} disabled={busy} onChange={(event) => setLogin({ ...login, remember: event.target.checked })} /> Manter conectado</label>
+          <div className="eyebrow">BEM-VINDO DE VOLTA</div>
+          <h2>Acesse sua plataforma</h2>
+          <p>Entre com suas credenciais para acompanhar a operação.</p>
+          <label className="field">
+              <span>E-mail corporativo</span>
+              <input type="email" autoComplete="username" required disabled={busy} aria-invalid={Boolean(loginError)} placeholder="nome@empresa.com.br" value={login.email} onChange={(event) => { setLogin({ ...login, email: event.target.value }); setLoginError('') }} />
+          </label>
+          <label className="field">
+              <span>Senha</span>
+              <input type="password" autoComplete="current-password" required disabled={busy} aria-invalid={Boolean(loginError)} placeholder="Digite sua senha" value={login.password} onChange={(event) => { setLogin({ ...login, password: event.target.value }); setLoginError('') }} />
+          </label>
+          <label className="remember">
+              <input type="checkbox" checked={login.remember} disabled={busy} onChange={(event) => setLogin({ ...login, remember: event.target.checked })} /> Manter conectado
+          </label>
           {loginError && <p className="login-error" role="alert">{loginError}</p>}
           {loginNotice && <p className="login-notice" role="status">{loginNotice}</p>}
           <button className="primary" type="submit" disabled={busy}>{busy ? 'Autenticando...' : 'Entrar na plataforma'}</button>
-          <div className="auth-switch"><span>Não possui acesso?</span><button type="button" onClick={() => { setAuthView('register'); setLoginError('') }}>Criar uma conta</button></div>
-          <small className="muted">{isDemoMode() ? `Modo demonstração · ${data.session.user.email} · senha: ${data.api.demo.password}` : 'MetalTech · © MetalTech'}</small>
+          <div className="auth-switch">
+              <span>Não possui acesso?</span>
+              <button type="button" onClick={() => { setAuthView('register'); setLoginError('') }}>Criar uma conta</button>
+          </div>
+          <small className="muted">
+              {isDemoMode() ? `Modo demonstração · ${data.session.user.email} · senha: ${data.api.demo.password}` : 'MetalTech · © MetalTech'}
+          </small>
         </form> : <form className="login-card" noValidate onSubmit={handleRegistration}>
           <div className="eyebrow">NOVO ACESSO</div><h2>Solicitar cadastro</h2><p>Preencha seus dados. O acesso será liberado após aprovação do administrador.</p>
-          <label className="field"><span>Nome completo</span><input autoComplete="name" required disabled={registrationBusy} placeholder="Seu nome" value={registration.name} onChange={(event) => { setRegistration({ ...registration, name: event.target.value }); setLoginError('') }} /></label>
-          <label className="field"><span>E-mail corporativo</span><input type="email" autoComplete="email" required disabled={registrationBusy} placeholder="nome@empresa.com.br" value={registration.email} onChange={(event) => { setRegistration({ ...registration, email: event.target.value }); setLoginError('') }} /></label>
-          <label className="field"><span>Senha (mínimo 8 caracteres)</span><input type="password" autoComplete="new-password" required disabled={registrationBusy} value={registration.password} onChange={(event) => { setRegistration({ ...registration, password: event.target.value }); setLoginError('') }} /></label>
-          <label className="field"><span>Confirmar senha</span><input type="password" autoComplete="new-password" required disabled={registrationBusy} value={registration.confirmPassword} onChange={(event) => { setRegistration({ ...registration, confirmPassword: event.target.value }); setLoginError('') }} /></label>
+          <label className="field">
+              <span>Nome completo</span>
+              <input autoComplete="name" required disabled={registrationBusy} placeholder="Seu nome" value={registration.name} onChange={(event) => { setRegistration({ ...registration, name: event.target.value }); setLoginError('') }} />
+          </label>
+          <label className="field">
+              <span>E-mail corporativo</span>
+              <input type="email" autoComplete="email" required disabled={registrationBusy} placeholder="nome@empresa.com.br" value={registration.email} onChange={(event) => { setRegistration({ ...registration, email: event.target.value }); setLoginError('') }} />
+          </label>
+          <label className="field">
+              <span>Senha (mínimo 8 caracteres)</span>
+              <input type="password" autoComplete="new-password" required disabled={registrationBusy} value={registration.password} onChange={(event) => { setRegistration({ ...registration, password: event.target.value }); setLoginError('') }} />
+          </label>
+          <label className="field">
+              <span>Confirmar senha</span>
+              <input type="password" autoComplete="new-password" required disabled={registrationBusy} value={registration.confirmPassword} onChange={(event) => { setRegistration({ ...registration, confirmPassword: event.target.value }); setLoginError('') }} />
+          </label>
           {loginError && <p className="login-error" role="alert">{loginError}</p>}
           <button className="primary" type="submit" disabled={registrationBusy}>{registrationBusy ? 'Enviando cadastro...' : 'Solicitar acesso'}</button>
-          <div className="auth-switch"><span>Já possui uma conta?</span><button type="button" onClick={() => { setAuthView('login'); setLoginError('') }}>Voltar ao login</button></div>
+          <div className="auth-switch"><span>Já possui uma conta?</span><button type="button" onClick={() => { setAuthView('login'); setLoginError('') }}>
+              Voltar ao login</button>
+          </div>
         </form>}
       </section>
     </div>
@@ -310,7 +450,7 @@ function App() {
       <div className="app-layout">
         <aside className="sidebar">
           <div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div>
-          <div className="workspace"><small>WORKSPACE</small><span>Fábrica São Paulo</span></div>
+          <div className="workspace"><small>WORKSPACE</small><span>{station.location ?? 'Estação não informada pela API'}</span></div>
           <nav>{navItems.filter(([id]) => canAccess(id)).map(([id, icon, label]) => <button key={id} className={page === id ? 'nav-item active' : 'nav-item'} onClick={() => { setPage(id); setFilter('Todas') }}><i>{icon}</i><span>{label}</span>{id === 'alerts' && activeAlerts > 0 && <em>{activeAlerts}</em>}</button>)}</nav>
           <div className="sidebar-bottom"><div className="integration"><b><i /> {apiStatus === 'demo' ? 'Modo demonstração' : apiStatus === 'connected' ? 'API conectada' : apiStatus === 'partial' ? 'API parcialmente conectada' : apiStatus === 'error' ? 'API indisponível' : 'Verificando API'}</b><small>{onlineSensors}/{sensors.length} sensores online</small></div><div className="profile"><b>{user.name}</b><small>{user.role} · <button onClick={handleLogout}>Sair ↗</button></small></div></div>
         </aside>
@@ -349,7 +489,7 @@ function App() {
                   <Card className="station-summary"><div><small>{station.id}</small><h2>{settings.name}</h2><p className="muted">{settings.location} · {station.shift}</p></div><div className="summary-status"><span className="tag success">● {station.status}</span><small>Última leitura: {lastReading ? dateTime(lastReading.timestamp) : '—'}</small></div></Card>
                   <div className="two-col station-cols"><Card title="Classificação da última peça"><p className="muted">Leitura #{lastReading?.id ?? '—'} · {lastReading ? dateTime(lastReading.timestamp) : 'Aguardando leitura'}</p><div className="classification-result"><strong>{lastReading?.classification ?? 'Sem classificação'}</strong><span className={`tag ${lastReading?.classification === 'Metálica' ? 'success' : 'neutral'}`}>Resultado dos sensores</span></div><p className="classification-rule">Indutivo ativo + capacitivo ativo = metálica. Indutivo inativo + capacitivo ativo = não metálica.</p></Card><ReservoirCard reservoir={reservoir} /></div>
                   <div className="sensor-grid">{sensors.map((sensor) => <Sensor key={sensor.id} sensor={sensor} />)}</div>
-                  <div className="notice"><div><b>Coleta automatizada</b><p>Envio HTTP a cada {data.configuration.collection.intervalSeconds} s · Controlador {station.controllerId} · HTTPS ativo</p></div><button onClick={() => setPage('settings')}>Ver configurações →</button></div>
+                  <div className="notice"><div><b>Coleta automatizada</b><p>Envio HTTP a cada {settings.intervalSeconds ?? '—'} s · Controlador {station.controllerId ?? '—'} · {settings.protocol ?? '—'}</p></div></div>
                 </>}
 
                 {page === 'analytics' && <>
@@ -383,18 +523,18 @@ function App() {
                   <div className="users-layout"><Card title="Equipe da fábrica" extra={<small className="muted">{users.length} usuários · {users.filter((item) => item.status === 'Ativo').length} ativos · {users.filter((item) => item.status === 'Pendente').length} convites pendentes</small>}>
                     <table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map((item) => <tr key={item.id ?? item.email}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role}</td><td><span className={item.status === 'Ativo' ? 'tag success' : 'tag warning'}>{item.status}</span></td><td>{canAccess('manageUsers') ? <>{item.status !== 'Ativo' && <button className="text-action" onClick={async () => { try { await api.updateUser(item.id, { status: 'Ativo' }); setUsers(await api.listUsers()); notify('Acesso do usuário aprovado') } catch (error) { notify(error.message) } }}>Aprovar acesso</button>} <button className="text-action" onClick={async () => { const name = window.prompt('Nome do usuário:', item.name); if (name === null) return; const email = window.prompt('E-mail:', item.email); if (email === null) return; const role = window.prompt('Perfil (Operador, Analista ou Administrador):', item.role); if (role === null) return; if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['Operador', 'Analista', 'Administrador'].includes(role)) { notify('Confira nome, e-mail e perfil'); return } try { await api.updateUser(item.id, { name: name.trim(), email: email.trim(), role }); setUsers(await api.listUsers()); notify('Usuário atualizado') } catch (error) { notify(error.message) } }}>Editar</button> <button className="text-action" onClick={async () => { if (!window.confirm(`Excluir ${item.name}?`)) return; try { await api.deleteUser(item.id); setUsers(await api.listUsers()); notify('Usuário excluído') } catch (error) { notify(error.message) } }}>Excluir</button></> : <span className="muted">Consulta</span>}</td></tr>)}</tbody></table>
                   </Card>{canAccess('manageUsers') && <Card title="Convidar usuário"><p className="muted">Envie um convite com o perfil adequado.</p><label className="field"><span>Nome</span><input id="invite-name" value={invite.name} onChange={(event) => setInvite({ ...invite, name: event.target.value })} placeholder="Nome completo" /></label><label className="field"><span>E-mail corporativo</span><input type="email" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} placeholder="nome@metaltech.com.br" /></label><label className="field"><span>Perfil de acesso</span><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value })}>{['Operador', 'Analista', 'Administrador'].map((role) => <option key={role}>{role}</option>)}</select></label>{action('Enviar convite', async () => { if (!invite.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email)) { notify('Informe nome e e-mail válido'); return } setBusy(true); try { await api.createUser(invite); setUsers(await api.listUsers()); setInvite({ name: '', email: '', role: 'Operador' }); notify(isDemoMode() ? 'Usuário salvo neste navegador' : 'Convite enviado pela API') } catch (error) { notify(error.message) } finally { setBusy(false) } })}</Card>}</div>
-                  <Card title="Permissões por perfil"><p className="muted">Aplique o menor privilégio necessário para cada integrante.</p><table className="stats-table permission-table"><thead><tr><th>RECURSO</th><th>OPERADOR</th><th>ANALISTA</th><th>ADMINISTRADOR</th></tr></thead><tbody>{data.account.permissions.map((row) => <tr key={row.resource}>{[row.resource, row.operator, row.analyst, row.administrator].map((value, index) => <td key={`${row.resource}-${index}`} className={index > 0 && value === 'Permitido' ? 'allowed' : ''}>{value}</td>)}</tr>)}</tbody></table></Card>
+                  <Card title="Permissões por perfil"><p className="muted">Aplique o menor privilégio necessário para cada integrante.</p><table className="stats-table permission-table"><thead><tr><th>RECURSO</th><th>OPERADOR</th><th>ANALISTA</th><th>ADMINISTRADOR</th></tr></thead><tbody>{rolePermissionRows.map((row) => <tr key={row.resource}>{[row.resource, row.operator, row.analyst, row.administrator].map((value, index) => <td key={`${row.resource}-${index}`} className={index > 0 && value === 'Permitido' ? 'allowed' : ''}>{value}</td>)}</tr>)}</tbody></table></Card>
                 </>}
 
                 {page === 'settings' && <>
                   <div className="settings-grid"><Card title="Critérios de alerta"><p className="muted">Reservatório e detecção de comportamento anormal.</p><div className="form-grid">{field('Nível de atenção (%)', 'attention', 'number')}{field('Nível crítico (%)', 'critical', 'number')}{field('Variação em 5 minutos (p.p.)', 'variationInFiveMinutes', 'number')}{field('Intervalo de coleta (s)', 'intervalSeconds', 'number')}</div><small className="orange-text">Atenção: {settings.attention}–{settings.critical}% · Crítico: ≥ {settings.critical}%</small></Card>
-                    <Card title="Integração da plataforma"><div className="card-status"><span className={`tag ${apiStatus === 'connected' || apiStatus === 'demo' ? 'success' : 'warning'}`}>● {apiStatus === 'connected' ? 'Conectada' : apiStatus === 'demo' ? 'Demonstração' : apiStatus === 'error' ? 'Indisponível' : 'Verificando'}</span></div><p className="muted">O dashboard e os dispositivos conectados utilizam a mesma API.</p>{field('Endereço da API', 'apiUrl')}<div className="form-grid">{field('Identificador do controlador', 'controllerId')}{field('Intervalo de atualização (s)', 'refreshSeconds', 'number')}</div><button className="soft" onClick={async () => { try { const result = await api.health(); setApiStatus(isDemoMode() ? 'demo' : 'connected'); notify(result?.message || 'API respondeu corretamente') } catch (error) { setApiStatus('error'); notify(error.message) } }}>Testar conexão</button></Card>
+                    <Card title="Integração da plataforma"><div className="card-status"><span className={`tag ${apiStatus === 'connected' || apiStatus === 'demo' ? 'success' : 'warning'}`}>● {apiStatus === 'connected' ? 'Conectada' : apiStatus === 'demo' ? 'Demonstração' : apiStatus === 'error' ? 'Indisponível' : 'Verificando'}</span></div><p className="muted">O dashboard e os dispositivos conectados utilizam a mesma API.</p>{field('Endereço da API', 'apiUrl')}<div className="form-grid">{field('Identificador do controlador', 'controllerId')}{field('Intervalo de atualização (s)', 'refreshSeconds', 'number')}</div><button className="soft" onClick={async () => { try { const result = await api.health(); setApiStatus(isDemoMode() ? 'demo' : 'connected'); notify(result?.message || 'API respondeu corretamente') } catch (error) { setApiStatus('error'); notify(error.message) } }}>Testar conexão</button>{apiErrors.length > 0 && <div className="api-errors" role="status"><b>Rotas que falharam nesta sincronização</b>{apiErrors.map((item) => <small key={item.resource}>{item.resource}: {item.message}</small>)}</div>}</Card>
                     <Card title="Estação e reservatório"><p className="muted">Parâmetros cadastrados para a estação.</p>{field('Nome da estação', 'name')}{field('Localização', 'location')}<div className="form-grid">{field('Capacidade (peças)', 'reservoirCapacity', 'number')}{field('Altura útil (cm)', 'reservoirHeight', 'number')}</div></Card>
-                    <Card title="Segurança"><p className="muted">Políticas de segurança da conta.</p><div className="health-row"><span>Autenticação em dois fatores</span><b>{data.configuration.security.twoFactorEnabled ? 'Ativada' : 'Desativada'}</b></div><div className="health-row"><span>Tempo limite da sessão</span><b>{data.configuration.security.sessionTimeoutMinutes} min</b></div><label className="remember"><input type="checkbox" checked={Boolean(data.configuration.security.auditEnabled)} readOnly /> Registro de auditoria habilitado</label></Card></div>
-                  {canAdmin && <Card title="Permissões individuais de usuários"><p className="muted">Selecione um integrante e personalize as áreas que ele pode acessar. As permissões individuais prevalecem sobre as permissões padrão do perfil.</p>
-                    <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => item.id !== user.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></label>
-                    {selectedPermissionUser && <><div className="permission-check-grid">{[['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['settings', 'Configurações'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']].map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { const permissions = permissionKeys.filter((key) => selectedPermissions[key]); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
-                  </Card>}
+                    {canAdmin && <Card title="Permissões individuais de usuários"><p className="muted">Selecione um integrante e personalize as áreas que ele pode acessar. As permissões individuais prevalecem sobre as permissões padrão do perfil.</p>
+                      <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => item.id !== user.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></label>
+                      {selectedPermissionUser && <><div className="permission-check-grid">{[['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['settings', 'Configurações'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']].map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { const permissions = permissionKeys.filter((key) => selectedPermissions[key]); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
+                    </Card>}
+                  </div>
                 </>}
 
                 <footer className="footer"><span>MetalTech / Plataforma de inteligência industrial</span><span>{isDemoMode() ? 'Modo demonstração · dados locais' : 'API REST · dados remotos'}</span></footer>
@@ -416,7 +556,7 @@ function Card({ title, extra, children, className = '' }) { return <section clas
 function Progress({ value }) { return <div className="progress"><i style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div> }
 function ReservoirCard({ reservoir }) {
   const status = reservoir.currentLevel >= reservoir.criticalThreshold ? 'Crítico' : reservoir.currentLevel >= reservoir.attentionThreshold ? 'Atenção' : 'Normal'
-  const stored = reservoir.capacity * reservoir.currentLevel / 100
+  const stored = reservoir.capacity == null || reservoir.currentLevel == null ? null : reservoir.capacity * reservoir.currentLevel / 100
   return <Card title="Reservatório de saída"><div className="tank-number">{percent(reservoir.currentLevel)} <span className={`tag ${status === 'Normal' ? 'success' : 'warning'}`}>{status}</span></div><p className="muted">{number(stored)} peças armazenadas · capacidade: {number(reservoir.capacity)}</p><Progress value={reservoir.currentLevel} /><small>Distância até as peças: {reservoir.distance} cm</small><p className="muted tiny">{status === 'Crítico' ? 'Esvaziamento imediato recomendado.' : status === 'Atenção' ? `Esvaziar antes de atingir ${reservoir.criticalThreshold}%.` : 'Nível dentro da faixa normal.'}</p></Card>
 }
 function Sensor({ sensor }) {
@@ -437,13 +577,47 @@ function StatsTable({ hourly }) {
   const nonMetallic = hourly.map((item) => item.nonMetallic)
   const level = hourly.map((item) => item.reservoirLevel)
   const rows = [
-    ['Média', avg(metallic), avg(nonMetallic), avg(level)],
-    ['Mediana (Q2)', median(metallic), median(nonMetallic), median(level)],
-    ['Amostras', metallic.length, nonMetallic.length, level.length],
-    ['Mínimo', metallic.length ? Math.min(...metallic) : 0, nonMetallic.length ? Math.min(...nonMetallic) : 0, level.length ? Math.min(...level) : 0],
-    ['Máximo', metallic.length ? Math.max(...metallic) : 0, nonMetallic.length ? Math.max(...nonMetallic) : 0, level.length ? Math.max(...level) : 0],
+    [
+      'Média', 
+      avg(metallic), 
+      avg(nonMetallic), 
+      avg(level)
+    ],
+    [
+      'Mediana (Q2)', 
+      median(metallic), 
+      median(nonMetallic), 
+      median(level)
+    ],
+    [
+      'Amostras', 
+      metallic.length, 
+      nonMetallic.length, 
+      level.length
+    ],
+    [
+      'Mínimo', 
+      metallic.length ? Math.min(...metallic) : 0, 
+      nonMetallic.length ? Math.min(...nonMetallic) : 0, 
+      level.length ? Math.min(...level) : 0
+    ],
+    [
+      'Máximo', 
+      metallic.length ? Math.max(...metallic) : 0, 
+      nonMetallic.length ? Math.max(...nonMetallic) : 0, 
+      level.length ? Math.max(...level) : 0
+    ],
   ]
-  return <table className="stats-table"><thead><tr><th>MEDIDA</th><th>METÁLICAS (PEÇAS/H)</th><th>NÃO METÁLICAS (PEÇAS/H)</th><th>NÍVEL (%)</th></tr></thead><tbody>{rows.map((row) => <tr key={row[0]}>{row.map((value, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? value : Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>)}</tr>)}</tbody></table>
+  return  <table className="stats-table">
+            <thead>
+               <tr>
+                 <th>MEDIDA</th>
+                 <th>METÁLICAS (PEÇAS/H)</th>
+                 <th>NÃO METÁLICAS (PEÇAS/H)</th>
+                 <th>NÍVEL (%)</th></tr>
+            </thead>
+            <tbody>{rows.map((row) => <tr key={row[0]}>{row.map((value, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? value : Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>)}</tr>)}</tbody>
+          </table>
 }
 
 export default App

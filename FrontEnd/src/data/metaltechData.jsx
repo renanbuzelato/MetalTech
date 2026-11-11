@@ -3,7 +3,7 @@ export const metalTechData = {
   // Cada endpoint documenta método, payload esperado e finalidade da integração.
   api: {
     mode: 'rest', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
-    baseUrl: 'http://10.110.12.85:8080/api/v1',
+    baseUrl: 'http://10.110.12.104:8080/api/v1',
     timeoutMs: 12000,
     credentials: 'same-origin',
     headers: {
@@ -24,6 +24,23 @@ export const metalTechData = {
       ssePath: '/events', // contrato opcional: evento JSON com campos users, alerts, readings, sensors, production, settings e station.
       websocketUrl: '', // opcional: ex. wss://servidor/api/v1/events?token={token}; tem prioridade sobre SSE.
     },
+    // CONTRATO REST OBRIGATÓRIO NO MODO 'rest': implemente todas as rotas abaixo no backend.
+    // Listas aceitam [] ou { data: [] }; objetos aceitam { ... } ou { data: { ... } }.
+    // Nenhum dado de operation/account/configuration é fallback no modo REST: estes blocos são sementes exclusivas do modo demo.
+    //
+    // FORMATOS DE RESPOSTA ESPERADOS (JSON):
+    // User: { id, name, email, role, status, permissions: string[] | Record<string, boolean> }.
+    // Station: { id, name, location, status, shift, controllerId }.
+    // Sensor: { id, type, technology, value, unit, status, lastSeenAt }.
+    // Reading: { id, timestamp, classification, inductive, capacitive, distance, reservoirLevel, status }.
+    // Production item: { hour, metallic, nonMetallic, reservoirLevel }.
+    // Alert: { id, title, occurredAt, status, severity, reservoirLevel, stationId }.
+    // Settings: { alertThresholds: { attention, critical, variationInFiveMinutes }, collection: { intervalSeconds, refreshSeconds }, integration: { apiUrl, controllerId, protocol, version }, station: { name, location, reservoirCapacity, reservoirHeight }, security: { twoFactorEnabled, auditEnabled, sessionTimeoutMinutes } }.
+    // Reservoir status: { currentLevel, distance, capacity, attentionThreshold, criticalThreshold, storedPieces, updatedAt }.
+    // Login: POST /auth/login body { email, password }, response { token, user }. Register: POST /auth/register body { name, email, password }, response { message, user? }.
+    // Listagens aceitam filtros via query string e retornam [] ou { data: [] }; detalhes retornam objeto ou { data: objeto }.
+    // Erros devem retornar HTTP 4xx/5xx e JSON { message, code?, details? }.
+    // Realtime: SSE GET /events ou WebSocket deve publicar JSON { type?, data: { users?, alerts?, readings?, sensors?, production?, settings?, station?, reservoir?, rolePermissions?, overview?, currentUser? } }.
     endpoints: {
       health: { method: 'GET', path: '/health' }, // disponibilidade da API
       auth: {
@@ -40,6 +57,7 @@ export const metalTechData = {
         delete: { method: 'DELETE', path: '/users/:id' }, // :id = usuário
       },
       stations: {
+        current: { method: 'GET', path: '/stations/current' }, // estação selecionada para a sessão; response: { id, name, location, status, shift, controllerId }
         list: { method: 'GET', path: '/stations' }, // lista de estações
         detail: { method: 'GET', path: '/stations/:id' }, // detalhe e configuração de uma estação
         create: { method: 'POST', path: '/stations' }, // body: dados da estação
@@ -47,29 +65,31 @@ export const metalTechData = {
         delete: { method: 'DELETE', path: '/stations/:id' }, // remove estação
       },
       sensors: {
-        list: { method: 'GET', path: '/sensors' }, // lista sensores e seus metadados
+        list: { method: 'GET', path: '/sensors' }, // response: Sensor[]
         readings: { method: 'GET', path: '/sensors/readings' }, // query: stationId, sensorId, from, to, page, limit
         latest: { method: 'GET', path: '/sensors/readings/latest' }, // última leitura por sensor
         status: { method: 'GET', path: '/sensors/status' }, // status/lastSeenAt dos sensores
       },
       readings: {
-        list: { method: 'GET', path: '/readings' }, // query: stationId, classification, from, to, page, limit
+        list: { method: 'GET', path: '/readings' }, // query: stationId, classification, from, to, page, limit; response: Reading[]
         detail: { method: 'GET', path: '/readings/:id' }, // detalhe e rastreabilidade da leitura
         export: { method: 'GET', path: '/readings/export' }, // query: mesmos filtros; resposta JSON[] (frontend gera CSV)
       },
+      reservoir: { status: { method: 'GET', path: '/reservoir/status' } }, // response: { currentLevel, distance, capacity, attentionThreshold, criticalThreshold, storedPieces, updatedAt }
+      permissions: { roles: { method: 'GET', path: '/permissions/roles' } }, // matriz de permissões padrão; response: { data: [{ resource, operator, analyst, administrator }] }
       analytics: {
-        overview: { method: 'GET', path: '/analytics/overview' }, // KPIs consolidados do período
-        production: { method: 'GET', path: '/analytics/production' }, // query: stationId, from, to, interval
-        reservoir: { method: 'GET', path: '/analytics/reservoir' }, // série histórica do nível
+        overview: { method: 'GET', path: '/analytics/overview' }, // response: { totalPieces, metallicPieces, nonMetallicPieces, metallicPercent, nonMetallicPercent, period, updatedAt }
+        production: { method: 'GET', path: '/analytics/production' }, // query: stationId, from, to, interval; response: [{ hour, metallic, nonMetallic, reservoirLevel }]
+        reservoir: { method: 'GET', path: '/analytics/reservoir' }, // query: stationId, from, to, interval; response: [{ timestamp, level, distance }]
       },
       alerts: {
-        list: { method: 'GET', path: '/alerts' }, // query: status, severity, stationId, from, to
+        list: { method: 'GET', path: '/alerts' }, // query: status, severity, stationId, from, to; response: Alert[]
         detail: { method: 'GET', path: '/alerts/:id' }, // detalhe da ocorrência
         update: { method: 'PATCH', path: '/alerts/:id' }, // body: { status, comment, acknowledgedAt, resolvedAt }
       },
       settings: {
-        get: { method: 'GET', path: '/settings' }, // configuração operacional atual
-        update: { method: 'PUT', path: '/settings' }, // body: { alertThresholds, collection, integration, station }
+        get: { method: 'GET', path: '/settings' }, // response: Settings conforme schema documentado acima
+        update: { method: 'PUT', path: '/settings' }, // body: Settings; response: Settings atualizado
       },
       audit: { list: { method: 'GET', path: '/audit-logs' } }, // query: actorId, action, from, to, page, limit
     },
@@ -313,6 +333,7 @@ export const metalTechData = {
   },
   account: {
     users: [
+      //senha: MetalTech@2026
       { 
         id: 'USR-000', 
         name: 'Rhuan Oliveira', 

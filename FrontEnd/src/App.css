@@ -14,3 +14,14 @@
 .login-notice{margin:0 0 12px;color:#087a54;background:#eaf7f0;border:1px solid #b7e2cb;border-radius:5px;padding:10px 12px;font-size:10px;line-height:1.45}
 
 .classification-result{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 14px;padding:17px;background:#eef7f5;border-radius:7px}.classification-result strong{font-size:22px;color:#087f77}.classification-rule{font-size:10px;line-height:1.6;color:#718399}.filter-context{font-size:10px;color:#718399;white-space:nowrap}.filter-bar .filter-context{margin-right:auto}.filter-bar>span.muted{margin-left:0}
+
+.api-errors {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(220, 120, 60, .35);
+  border-radius: 8px;
+  background: rgba(220, 120, 60, .07);
+}
+.api-errors small { color: var(--muted, #9aa4ad); overflow-wrap: anywhere; }

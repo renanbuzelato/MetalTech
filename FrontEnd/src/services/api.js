@@ -107,7 +107,7 @@ export const api = {
     if (!isDemoMode()) {
       try {
         const route = endpoint('auth', 'login')
-        const result = await http(route.path, { method: route.method, body: credentials, auth: false })
+        const result = await http(route.path, { method: route.method, body: { email: credentials.email, password: credentials.password }, auth: false })
         const token = result?.[config.auth.responseTokenField] || result?.token || result?.accessToken
         const user = result?.[config.auth.responseUserField] || result?.user
         if (!token || !user) throw new Error('Resposta de login inválida: esperado token e usuário.')
@@ -176,9 +176,26 @@ export const api = {
 
   async getStation() {
     if (isDemoMode()) return metalTechData.operation.station
-    const route = endpoint('stations', 'detail')
-    const result = await http(route.path.replace(':id', encodeURIComponent(metalTechData.operation.station.id)), { method: route.method })
-    return unwrapObject(result)
+    const route = endpoint('stations', 'current')
+    return unwrapObject(await http(route.path, { method: route.method }))
+  },
+
+  async getReservoirStatus() {
+    if (isDemoMode()) return { ...metalTechData.operation.reservoir, currentLevel: metalTechData.operation.readings[0]?.reservoirLevel ?? metalTechData.operation.reservoir.currentLevel, distance: metalTechData.operation.readings[0]?.distance ?? metalTechData.operation.reservoir.distance }
+    const route = endpoint('reservoir', 'status')
+    return unwrapObject(await http(route.path, { method: route.method }))
+  },
+
+  async listRolePermissions() {
+    if (isDemoMode()) return metalTechData.account.permissions
+    const route = endpoint('permissions', 'roles')
+    return unwrapList(await http(route.path, { method: route.method }))
+  },
+
+  async getOverview(query = {}) {
+    if (isDemoMode()) return null
+    const route = endpoint('analytics', 'overview')
+    return unwrapObject(await http(route.path, { method: route.method, query }))
   },
 
   async listSensors() {
@@ -290,10 +307,11 @@ export const api = {
 
   // Snapshot único para manter todas as telas sincronizadas com o mesmo ciclo de atualização.
   async refreshAll() {
-    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'settings', 'station']
+    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'settings', 'station', 'reservoir', 'rolePermissions', 'overview', 'currentUser']
     const requests = [
       this.listUsers(), this.listAlerts(), this.listReadings(), this.listSensors(),
-      this.listProduction(), this.getSettings(), this.getStation(),
+      this.listProduction(), this.getSettings(), this.getStation(), this.getReservoirStatus(),
+      this.listRolePermissions(), this.getOverview(), this.me(),
     ]
     const results = await Promise.allSettled(requests)
     const snapshot = {}
