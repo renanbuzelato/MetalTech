@@ -1,0 +1,402 @@
+export const metalTechData = {
+  // API: altere mode para "rest" e informe baseUrl quando o backend estiver disponível.
+  // Cada endpoint documenta método, payload esperado e finalidade da integração.
+  api: {
+    mode: 'demo', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
+    baseUrl: 'https://api-ficticia.metaltech.com.br/v1',
+    timeoutMs: 12000,
+    credentials: 'same-origin',
+    headers: {},
+    auth: {
+      tokenType: 'Bearer',
+      responseTokenField: 'token',
+      responseUserField: 'user',
+      // Login: POST { email, password } -> { token, user }.
+    },
+    demo: {
+      storagePrefix: 'metaltech:',
+      // Modo demo usa os usuários iniciais deste arquivo; senha não é validada.
+      // Não utilize este modo como autenticação de produção.
+    },
+    endpoints: {
+      health: { method: 'GET', path: '/health' }, // disponibilidade da API
+      auth: {
+        login: { method: 'POST', path: '/auth/login' }, // body: { email, password }; response: { token, user }
+        logout: { method: 'POST', path: '/auth/logout' }, // invalida token/sessão
+        me: { method: 'GET', path: '/auth/me' }, // usuário autenticado
+        refresh: { method: 'POST', path: '/auth/refresh' }, // body: { refreshToken }; response: { token, refreshToken }
+      },
+      users: {
+        list: { method: 'GET', path: '/users' }, // response: User[] ou { data: User[] }
+        create: { method: 'POST', path: '/users' }, // body: { name, email, role }; response: User
+        update: { method: 'PATCH', path: '/users/:id' }, // :id = usuário; body: campos alterados
+        delete: { method: 'DELETE', path: '/users/:id' }, // :id = usuário
+      },
+      stations: {
+        list: { method: 'GET', path: '/stations' }, // lista de estações
+        detail: { method: 'GET', path: '/stations/:id' }, // detalhe e configuração de uma estação
+        create: { method: 'POST', path: '/stations' }, // body: dados da estação
+        update: { method: 'PATCH', path: '/stations/:id' }, // body: campos alterados
+        delete: { method: 'DELETE', path: '/stations/:id' }, // remove estação
+      },
+      sensors: {
+        list: { method: 'GET', path: '/sensors' }, // lista sensores e seus metadados
+        readings: { method: 'GET', path: '/sensors/readings' }, // query: stationId, sensorId, from, to, page, limit
+        latest: { method: 'GET', path: '/sensors/readings/latest' }, // última leitura por sensor
+        status: { method: 'GET', path: '/sensors/status' }, // status/lastSeenAt dos sensores
+      },
+      readings: {
+        list: { method: 'GET', path: '/readings' }, // query: stationId, classification, from, to, page, limit
+        detail: { method: 'GET', path: '/readings/:id' }, // detalhe e rastreabilidade da leitura
+        export: { method: 'GET', path: '/readings/export' }, // query: mesmos filtros; resposta JSON[] (frontend gera CSV)
+      },
+      analytics: {
+        overview: { method: 'GET', path: '/analytics/overview' }, // KPIs consolidados do período
+        production: { method: 'GET', path: '/analytics/production' }, // query: stationId, from, to, interval
+        reservoir: { method: 'GET', path: '/analytics/reservoir' }, // série histórica do nível
+      },
+      alerts: {
+        list: { method: 'GET', path: '/alerts' }, // query: status, severity, stationId, from, to
+        detail: { method: 'GET', path: '/alerts/:id' }, // detalhe da ocorrência
+        update: { method: 'PATCH', path: '/alerts/:id' }, // body: { status, comment, acknowledgedAt, resolvedAt }
+      },
+      settings: {
+        get: { method: 'GET', path: '/settings' }, // configuração operacional atual
+        update: { method: 'PUT', path: '/settings' }, // body: { alertThresholds, collection, integration, station }
+      },
+      audit: { list: { method: 'GET', path: '/audit-logs' } }, // query: actorId, action, from, to, page, limit
+    },
+  },
+  session: {
+    user: { 
+      id: 'USR-001',
+      name: 'Rhuan Oliveira',
+      email: 'rhuan.oliveira@metaltech.com.br', 
+      role: 'Administrador', 
+      status: 'Ativo' },
+  },
+  operation: {
+    station: { 
+      id: 'ET-001', 
+      name: 'Esteira de triagem 01', 
+      location: 'Linha A · Fábrica São Paulo', 
+      status: 'Em operação', 
+      shift: 'Turno 06:00–14:32', 
+      controllerId: 'CLP-001' 
+    },
+    reservoir: { 
+      capacity: 1000, 
+      currentLevel: 78, 
+      distance: 22, 
+      attentionThreshold: 75, 
+      criticalThreshold: 90 
+    },
+    sensors: [
+      { 
+        id: 'SD-001', 
+        type: 'distance', 
+        technology: 'Ultrassônico', 
+        value: 22, 
+        unit: 'cm', 
+        status: 'Online', 
+        lastSeenAt: '2026-11-10T14:32:05-03:00' 
+      },
+      { 
+        id: 'SI-001', 
+        type: 'inductive', 
+        technology: 'Detecção de metal', 
+        value: true, 
+        unit: null, 
+        status: 'Online', 
+        lastSeenAt: '2026-11-10T14:32:05-03:00' 
+      },
+      { 
+        id: 'SC-001', 
+        type: 'capacitive', 
+        technology: 'Presença de material', 
+        value: true, 
+        unit: null, 
+        status: 'Online', 
+        lastSeenAt: '2026-11-10T14:32:05-03:00' 
+      },
+    ],
+    readings: [
+      { 
+        id: 'LT-1280', 
+        timestamp: '2026-11-10T14:32:05-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1279', 
+        timestamp: '2026-11-10T14:32:03-03:00', 
+        classification: 'Não metálica', 
+        inductive: false, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 
+        78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1278', 
+        timestamp: '2026-11-10T14:32:01-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1277', 
+        timestamp: '2026-11-10T14:31:59-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1276', 
+        timestamp: '2026-11-10T14:31:57-03:00', 
+        classification: 'Não metálica', 
+        inductive: false, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1275', 
+        timestamp: '2026-11-10T14:31:55-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1274', 
+        timestamp: '2026-11-10T14:31:53-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1273', 
+        timestamp: '2026-11-10T14:31:51-03:00', 
+        classification: 'Não metálica', 
+        inductive: false, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+      { 
+        id: 'LT-1272', 
+        timestamp: '2026-11-10T14:31:49-03:00', 
+        classification: 'Metálica', 
+        inductive: true, 
+        capacitive: true, 
+        distance: 22, 
+        reservoirLevel: 78, 
+        status: 'Recebida' 
+      },
+    ],
+    hourlyProduction: [
+      { 
+        hour: '06:00', 
+        metallic: 90, 
+        nonMetallic: 48, 
+        reservoirLevel: 20 
+      },
+      { 
+        hour: '07:00', 
+        metallic: 96, 
+        nonMetallic: 52, 
+        reservoirLevel: 28 
+      },
+      { 
+        hour: '08:00', 
+        metallic: 102, 
+        nonMetallic: 54, 
+        reservoirLevel: 36 
+      },
+      { 
+        hour: '09:00', 
+        metallic: 108, 
+        nonMetallic: 58, 
+        reservoirLevel: 44 
+      },
+      { 
+        hour: '10:00', 
+        metallic: 104, 
+        nonMetallic: 56, 
+        reservoirLevel: 52 
+      },
+      { 
+        hour: '11:00', 
+        metallic: 112, 
+        nonMetallic: 60, 
+        reservoirLevel: 60 
+      },
+      { 
+        hour: '12:00', 
+        metallic: 116, 
+        nonMetallic: 62, 
+        reservoirLevel: 68 
+      },
+      { 
+        hour: '13:00', 
+        metallic: 104, 
+        nonMetallic: 58, 
+        reservoirLevel: 76 
+      },
+    ],
+    alerts: [
+      { 
+        id: 'AL-078', 
+        title: 'Reservatório próximo da capacidade', 
+        occurredAt: '2026-11-10T14:32:00-03:00', 
+        status: 'Em aberto', 
+        severity: 'Atenção', 
+        reservoirLevel: 78 
+      },
+      { 
+        id: 'AL-077', 
+        title: 'Enchimento acima do padrão', 
+        occurredAt: '2026-11-10T14:29:00-03:00', 
+        status: 'Em aberto', 
+        severity: 'Atenção', 
+        variation: 11 
+      },
+      { 
+        id: 'AL-076', 
+        title: 'Comunicação restabelecida', 
+        occurredAt: '2026-11-10T12:18:00-03:00', 
+        status: 'Resolvido', 
+        severity: 'Informativo' 
+      },
+      { 
+        id: 'AL-075', 
+        title: 'Reservatório esvaziado', 
+        occurredAt: '2026-11-10T10:45:00-03:00', 
+        status: 'Resolvido', 
+        severity: 'Informativo', 
+        reservoirLevel: 22 
+      },
+      { 
+        id: 'AL-074', 
+        title: 'Leitura inválida descartada', 
+        occurredAt: '2026-11-10T08:52:00-03:00', 
+        status: 'Resolvido', 
+        severity: 'Aviso' 
+      },
+    ],
+  },
+  account: {
+    users: [
+      { 
+        id: 'USR-000', 
+        name: 'Rhuan Oliveira', 
+        email: 'rhuan.oliveira@metaltech.com.br', 
+        role: 'Administrador', 
+        status: 'Ativo' 
+      },
+      { 
+        id: 'USR-001', 
+        name: 'Carla Oliveira', 
+        email: 'carla.oliveira@metaltech.com.br', 
+        role: 'Administrador', 
+        status: 'Ativo' 
+      },
+      { 
+        id: 'USR-002', 
+        name: 'João Santos', 
+        email: 'joao.santos@metaltech.com.br', 
+        role: 'Operador', 
+        status: 'Ativo' 
+      },
+      { 
+        id: 'USR-003', 
+        name: 'Ana Souza', 
+        email: 'ana.souza@metaltech.com.br', 
+        role: 'Analista', 
+        status: 'Ativo' 
+      },
+      { 
+        id: 'USR-004', 
+        name: 'Bruno Lima', 
+        email: 'bruno.lima@metaltech.com.br', 
+        role: 'Operador', 
+        status: 'Pendente' 
+      },
+    ],
+    permissions: [
+      { 
+        resource: 'Monitorar e consultar leituras', 
+        operator: 'Permitido', 
+        analyst: 'Permitido', 
+        administrator: 'Permitido' 
+      },
+      { 
+        resource: 'Reconhecer alertas', 
+        operator: 'Permitido', 
+        analyst: 'Somente leitura', 
+        administrator: 'Permitido' 
+      },
+      { 
+        resource: 'Exportar análises e históricos', 
+        operator: 'Não permitido', 
+        analyst: 'Permitido', 
+        administrator: 'Permitido' 
+      },
+      { 
+        resource: 'Editar regras, estações e usuários', 
+        operator: 'Não permitido', 
+        analyst: 'Não permitido', 
+        administrator: 'Permitido' 
+      },
+    ],
+  },
+  configuration: {
+    alertThresholds: { 
+      attention: 75, 
+      critical: 90, 
+      variationInFiveMinutes: 10 
+    },
+    collection: { 
+      intervalSeconds: 2, 
+      refreshSeconds: 2 
+    },
+    integration: { 
+      apiUrl: 'https://api-ficticia.metaltech.com.br/v1', 
+      controllerId: 'CLP-001', 
+      protocol: 'HTTPS', 
+      version: 'v1' 
+    },
+    station: { 
+      name: 'Esteira de triagem 01', 
+      location: 'Linha A · Fábrica São Paulo', 
+      reservoirCapacity: 1000, 
+      reservoirHeight: 100 
+    },
+    security: { 
+      twoFactorEnabled: true, 
+      auditEnabled: true, 
+      sessionTimeoutMinutes: 30 
+    },
+  },
+};
+
+export default metalTechData;

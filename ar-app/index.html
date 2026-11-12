@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!--
+  index.html - Estrutura do aplicativo de Realidade Aumentada (WebAR)
+  Projeto Interdisciplinar II - MetalTech - Eletiva I
+
+  Escolhemos WebAR (AR.js + A-Frame) porque roda direto no navegador do
+  celular, sem instalar aplicativo e sem licença paga. Também fica fácil
+  de hospedar junto com o restante da solução na nuvem.
+
+  Como funciona, em resumo:
+    1. A câmera do celular é aberta pelo AR.js.
+    2. O AR.js procura o marcador (que representa a estação de triagem).
+    3. Quando acha, os elementos 3D abaixo aparecem "grudados" nele.
+    4. O app.js preenche esses elementos com dados vindos da API REST.
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <!-- Faz a página se ajustar à tela do celular (usabilidade mobile) -->
+  <!-- App feito para celular: travamos o zoom por pinça/toque duplo do navegador,
+       que atrapalharia o rastreamento e a leitura. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>RA - Esteira de Triagem | MetalTech</title>
+
+  <!-- A-Frame: framework que facilita criar cenas 3D com tags HTML -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- AR.js: biblioteca de rastreamento de marcadores para o A-Frame -->
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.5/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    /* Tela cheia, sem rolagem, para a câmera ocupar tudo.
+       ATENÇÃO: não colocar background no html/body. O AR.js insere o vídeo
+       da câmera com z-index negativo (-2); um fundo no body ficaria na frente
+       do vídeo e a tela apareceria toda preta. */
+    html, body { margin: 0; height: 100%; overflow: hidden;
+                 font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    /* Fundo preto das barras do modo "visão ampla". É um elemento próprio com
+       z-index -3, ou seja, sempre ATRÁS do vídeo da câmera (z-index -2). */
+    #fundo { position: fixed; inset: 0; background: #000; z-index: -3; }
+
+    /* Painel de diagnóstico: só aparece com ?debug na URL */
+    #debug { display: none; position: fixed; left: 8px; right: 8px; z-index: 30;
+             top: calc(64px + env(safe-area-inset-top, 0px)); margin: 0; padding: 8px;
+             font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #b9f6ca;
+             background: rgba(0, 0, 0, .78); border-radius: 6px; white-space: pre-wrap; }
+
+    /* Barra inferior (HUD) com o estado do marcador e da API.
+       O env(safe-area-inset-bottom) evita que o conteúdo fique atrás
+       da barra de gestos de alguns celulares. */
+    #hud { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+           padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+           background: rgba(18, 22, 26, .88); color: #eceff1; font-size: 15px;
+           display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
+    #hud .linha { display: flex; align-items: center; gap: 8px; }
+
+    /* Bolinha indicadora de estado: cinza (padrão), verde, vermelho, amarelo */
+    .ponto { width: 10px; height: 10px; border-radius: 50%; background: #90a4ae; }
+    .ponto.ok { background: #4caf50; }
+    .ponto.erro { background: #f44336; }
+    .ponto.aviso { background: #ffc107; }
+
+    /* Dica no topo orientando o usuário. Some quando o marcador é achado. */
+    #dica { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%;
+            transform: translateX(-50%); z-index: 10; padding: 8px 14px; border-radius: 6px;
+            background: rgba(18, 22, 26, .88); color: #eceff1; font-size: 14px; text-align: center;
+            width: max-content; max-width: calc(100% - 32px); }
+    #dica.oculto { display: none; }
+
+    /* Botão que alterna a visão da câmera (ampla x preenchida) */
+    #btnVisao { font: inherit; font-size: 14px; padding: 6px 10px; border: 0; border-radius: 6px;
+                background: #37474f; color: #eceff1; }
+
+    /* Tela de login (aparece só se a API exigir autenticação e não houver
+       token). Fonte de 16px nos campos evita o zoom automático do iPhone. */
+    #login { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center;
+             justify-content: center; background: rgba(18, 22, 26, .92); padding: 16px; }
+    #login.oculto { display: none; }
+    #login .cartao { width: 100%; max-width: 340px; color: #eceff1; display: grid; gap: 10px; }
+    #login h2 { margin: 0 0 4px; font-size: 20px; }
+    #login input { font-size: 16px; padding: 10px 12px; border-radius: 6px; border: 1px solid #455a64;
+                   background: #1c2227; color: #eceff1; }
+    #login button { font-size: 16px; padding: 10px 12px; border: 0; border-radius: 6px;
+                    background: #4fc3f7; color: #102027; font-weight: 600; }
+    #erroLogin { min-height: 1.2em; font-size: 14px; color: #ff8a80; }
+  </style>
+</head>
+<body>
+
+<div id="fundo"></div>
+<pre id="debug"></pre>
+
+<!-- Mensagem de orientação: ajuda quem usa o app pela primeira vez -->
+<div id="dica">Aponte a câmera para o marcador da esteira</div>
+
+<!-- Tela de login: a API do projeto exige token (Authorization: Bearer).
+     O app.js só mostra esta tela quando precisa. -->
+<div id="login" class="oculto">
+  <div class="cartao">
+    <h2>Entrar na plataforma</h2>
+    <input id="email" type="email" placeholder="E-mail" autocomplete="username">
+    <input id="senha" type="password" placeholder="Senha" autocomplete="current-password">
+    <button id="btnLogin" type="button">Entrar</button>
+    <small id="erroLogin"></small>
+  </div>
+</div>
+
+<!-- Barra de estado: feedback constante para o usuário saber o que está
+     acontecendo (marcador detectado? dados chegando?). -->
+<div id="hud">
+  <div class="linha"><span id="ptMarcador" class="ponto"></span><span id="lblMarcador">Marcador não detectado</span></div>
+  <div class="linha"><span id="ptApi" class="ponto"></span><span id="lblApi">Aguardando dados</span></div>
+  <!-- Alterna entre visão ampla (câmera inteira, com barras pretas) e preenchida
+       (ocupa a tela toda, mas o AR.js corta as bordas e dá efeito de zoom). -->
+  <button id="btnVisao" type="button">Visão: ampla</button>
+</div>
+
+<!-- Cena de RA. O atributo arjs configura o rastreamento:
+       sourceType: webcam         -> usa a câmera do dispositivo
+       sourceWidth/Height e displayWidth/Height: 1280x960
+                                  -> resolução da câmera, sempre em 4:3, que é a proporção
+                                     que o AR.js assume para alinhar o objeto 3D ao marcador
+                                     (o padrão dele é 640x480). Mais resolução = imagem mais
+                                     nítida. Se o celular ficar lento, voltar para 640x480.
+       debugUIEnabled: false      -> esconde a interface de depuração
+       detectionMode: mono_and_matrix + matrixCodeType: 3x3
+                                  -> permite marcadores de padrão e de código de matriz -->
+<a-scene embedded vr-mode-ui="enabled: false"
+         arjs="sourceType: webcam; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;">
+
+  <!-- MARCADOR
+       Para testes usamos o marcador padrão "Hiro" da biblioteca.
+       Na versão final vamos trocar por um marcador próprio com o logo da
+       MetalTech, gerado no AR.js Marker Training. Para isso, basta
+       substituir a linha abaixo por:
+       <a-marker id="marcador" type="pattern" url="marcador/pattern-metaltech.patt"> -->
+  <a-marker id="marcador" preset="hiro">
+
+    <!-- Painel escuro que serve de fundo para os textos ficarem legíveis
+         sobre qualquer cenário da câmera. O rotation -90 deita o painel
+         sobre o marcador, como se estivesse em cima da mesa. -->
+    <a-plane position="0 0.01 0" rotation="-90 0 0" width="2.4" height="1.9"
+             color="#12161a" opacity="0.85"></a-plane>
+
+    <a-text id="txtTitulo" value="ESTEIRA DE TRIAGEM" position="0 0.02 -0.75" rotation="-90 0 0"
+            align="center" width="3" color="#ffffff"></a-text>
+
+    <!-- Contagem de peças metálicas (azul) e não metálicas (verde).
+         Os ids são usados pelo app.js para atualizar o texto. -->
+    <a-text id="txtMetal" value="Metalicas: --" position="0 0.02 -0.35" rotation="-90 0 0"
+            align="center" width="3" color="#4fc3f7"></a-text>
+
+    <a-text id="txtNaoMetal" value="Nao metalicas: --" position="0 0.02 -0.05" rotation="-90 0 0"
+            align="center" width="3" color="#a5d6a7"></a-text>
+
+    <!-- Barra de nível do reservatório: uma caixa cinza fixa (fundo) e
+         uma caixa colorida por cima, cuja largura e cor o app.js altera
+         conforme o nível e o status. -->
+    <a-box id="barraFundo" position="0 0.03 0.4" width="2" height="0.02" depth="0.18" color="#3a434b"></a-box>
+    <a-box id="barraNivel" position="-0.99 0.04 0.4" width="0.01" height="0.03" depth="0.16" color="#4caf50"></a-box>
+
+    <a-text id="txtNivel" value="Nivel do reservatorio: --%" position="0 0.02 0.7" rotation="-90 0 0"
+            align="center" width="3" color="#ffffff"></a-text>
+
+    <!-- Alerta flutuante: começa invisível e só aparece quando o status
+         está em ATENCAO, CRITICO ou ANOMALIA. Fica inclinado e elevado
+         para chamar atenção sem esconder os números. -->
+    <a-entity id="alerta" visible="false" position="0 0.35 0" rotation="-60 0 0">
+      <a-plane width="2.2" height="0.45" color="#f44336" id="alertaFundo"></a-plane>
+      <a-text id="txtAlerta" value="" position="0 0 0.01" align="center" width="3.6" color="#ffffff"></a-text>
+    </a-entity>
+
+  </a-marker>
+
+  <!-- Câmera da cena. O AR.js a posiciona conforme o marcador detectado. -->
+  <a-entity camera></a-entity>
+</a-scene>
+
+<!-- A ordem importa: primeiro a configuração, depois a lógica que a usa. -->
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

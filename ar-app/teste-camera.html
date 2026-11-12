@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!--
+  teste-camera.html - Teste isolado da câmera do celular (sem AR.js).
+  Serve para descobrir se o problema é do celular/navegador/permissão
+  ou do app de RA. Abra esta página no mesmo endereço do app:
+  https://SEU-ENDERECO/teste-camera.html
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teste da câmera</title>
+  <style>
+    body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: #12161a; color: #eceff1; }
+    button { font-size: 18px; padding: 12px 18px; border: 0; border-radius: 8px; background: #4fc3f7; color: #102027; font-weight: 600; }
+    video { display: block; width: 100%; max-width: 480px; margin: 16px 0; background: #000; border-radius: 8px; }
+    pre { white-space: pre-wrap; font-size: 13px; line-height: 1.4; color: #b9f6ca; }
+  </style>
+</head>
+<body>
+  <h2>Teste da câmera</h2>
+  <button id="abrir" type="button">Abrir câmera</button>
+  <!-- playsinline e muted são necessários para o vídeo tocar no iPhone -->
+  <video id="video" playsinline muted autoplay></video>
+  <pre id="log"></pre>
+
+<script>
+  const log = (t) => { document.getElementById("log").textContent += t + "\n"; };
+  log("https: " + window.isSecureContext);
+  log("navegador: " + navigator.userAgent);
+  log("API de câmera: " + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: "camera" })
+      .then((p) => log("permissão da câmera: " + p.state))
+      .catch(() => log("permissão da câmera: não consultável neste navegador"));
+  }
+
+  document.getElementById("abrir").addEventListener("click", async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      const v = document.getElementById("video");
+      v.srcObject = stream;
+      await v.play();
+      v.addEventListener("loadedmetadata", () => log("vídeo: " + v.videoWidth + "x" + v.videoHeight));
+      log("OK: câmera aberta. Tamanho: " + v.videoWidth + "x" + v.videoHeight);
+    } catch (e) {
+      log("ERRO: " + e.name + " - " + e.message);
+    }
+  });
+</script>
+</body>
+</html>
