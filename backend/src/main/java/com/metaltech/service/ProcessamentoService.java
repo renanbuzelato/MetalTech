@@ -5,6 +5,8 @@ import com.metaltech.model.LeituraSensor;
 import com.metaltech.repository.LeituraSensorRepository;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+
 @Service
 public class ProcessamentoService {
 
@@ -14,20 +16,14 @@ public class ProcessamentoService {
         this.repository = repository;
     }
 
-    public void processarLeituraMQTT(SensorPayloadDTO payload) {
-        boolean metal = payload.getSensorIndutivo();
-        boolean capacitivo = payload.getSensorCapacitivo();
-        double nivelCm = payload.getDistanciaLaserMm() / 10.0;
+    public void processarMensagemMqtt(SensorPayloadDTO payload) {
+        if (payload == null) return;
 
-        String tipoPeca = "NENHUMA";
-        if (metal) {
-            tipoPeca = "METALICO";
-        } else if (capacitivo) {
-            tipoPeca = "NAO_METALICO";
-        }
+        LeituraSensor leitura = new LeituraSensor();
+        leitura.setTipoPeca(payload.getTipoPeca());
+        leitura.setNivelReservatorioCm(payload.getNivelReservatorioCm());
+        leitura.setDataHora(LocalDateTime.now());
 
-        LeituraSensor leitura = new LeituraSensor(tipoPeca, metal, capacitivo, nivelCm);
         repository.save(leitura);
-        System.out.println(" Processado e salvo no PostgreSQL: " + tipoPeca + " | Nível: " + nivelCm + " cm");
     }
 }

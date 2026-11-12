@@ -1,16 +1,29 @@
 package com.metaltech.dto;
 
 public class SensorPayloadDTO {
-    private Boolean sensorIndutivo;
-    private Boolean sensorCapacitivo;
-    private Double distanciaLaserMm;
+    private String tipoPeca;
+    private double nivelReservatorioCm;
 
-    public Boolean getSensorIndutivo() { return sensorIndutivo != null && sensorIndutivo; }
-    public void setSensorIndutivo(Boolean sensorIndutivo) { this.sensorIndutivo = sensorIndutivo; }
+    public SensorPayloadDTO() {}
 
-    public Boolean getSensorCapacitivo() { return sensorCapacitivo != null && sensorCapacitivo; }
-    public void setSensorCapacitivo(Boolean sensorCapacitivo) { this.sensorCapacitivo = sensorCapacitivo; }
+    public SensorPayloadDTO(String tipoPeca, double nivelReservatorioCm) {
+        this.tipoPeca = tipoPeca;
+        this.nivelReservatorioCm = nivelReservatorioCm;
+    }
 
-    public Double getDistanciaLaserMm() { return distanciaLaserMm != null ? distanciaLaserMm : 0.0; }
-    public void setDistanciaLaserMm(Double distanciaLaserMm) { this.distanciaLaserMm = distanciaLaserMm; }
+    public String getTipoPeca() {
+        return tipoPeca;
+    }
+
+    public void setTipoPeca(String tipoPeca) {
+        this.tipoPeca = tipoPeca;
+    }
+
+    public double getNivelReservatorioCm() {
+        return nivelReservatorioCm;
+    }
+
+    public void setNivelReservatorioCm(double nivelReservatorioCm) {
+        this.nivelReservatorioCm = nivelReservatorioCm;
+    }
 }
