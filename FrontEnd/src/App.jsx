@@ -21,11 +21,12 @@ function App() {
   const [station, setStation] = useState(() => demo ? data.operation.station : {})
   const [readingsData, setReadingsData] = useState(() => demo ? data.operation.readings : [])
   const [hourly, setHourly] = useState(() => demo ? data.operation.hourlyProduction : [])
+  const [reservoirAnalytics, setReservoirAnalytics] = useState(() => demo ? data.operation.hourlyProduction.map((item) => ({ timestamp: item.hour, level: item.reservoirLevel })) : [])
   const [sensors, setSensors] = useState(() => demo ? data.operation.sensors : [])
   const [alerts, setAlerts] = useState(() => demo ? data.operation.alerts : [])
   const [reservoirData, setReservoirData] = useState(() => demo ? data.operation.reservoir : {})
   const [rolePermissionRows, setRolePermissionRows] = useState(() => demo ? data.account.permissions : [])
-  const [, setOverviewData] = useState(null)
+  const [overviewData, setOverviewData] = useState(null)
   const [user, setUser] = useState(() => getStoredSession())
 
 
@@ -92,10 +93,27 @@ function App() {
     ],
   }
   const canAccess = (key) => {
+    // Permissões individuais explícitas sempre prevalecem sobre as permissões do perfil.
     if (Array.isArray(user?.permissions)) return user.permissions.includes(key)
-    if (user?.permissions && typeof user.permissions === 'object' && key in user.permissions) return Boolean(user.permissions[key])
-    if (!isDemoMode()) return false // no REST: nunca inferir permissão a partir de perfil local
-    return (rolePermissions[user?.role] ?? []).includes(key)
+    if (user?.permissions && typeof user.permissions === 'object' && key in user.permissions) {
+      return Boolean(user.permissions[key])
+    }
+
+    if (isDemoMode()) return (rolePermissions[user?.role] ?? []).includes(key)
+
+    // No REST, usa exclusivamente a matriz de perfis recebida de GET /permissions/roles.
+    // Essa matriz já é carregada no estado rolePermissionRows, mas antes não era consultada.
+    const roleField = {
+      Administrador: 'administrator',
+      Analista: 'analyst',
+      Operador: 'operator',
+    }[user?.role]
+    if (!roleField) return false
+
+    const permissionRow = rolePermissionRows.find((row) =>
+      row?.resource === key || row?.key === key || row?.permission === key
+    )
+    return Boolean(permissionRow?.[roleField])
   }
   const [showLogin, setShowLogin] = useState(() => !getStoredSession())
   const [login, setLogin] = useState({ email: '', password: '', remember: true })
@@ -130,8 +148,9 @@ function App() {
       if (Array.isArray(snapshot.sensors)) setSensors(snapshot.sensors)
       if (snapshot.reservoir && typeof snapshot.reservoir === 'object') setReservoirData(snapshot.reservoir)
       if (Array.isArray(snapshot.rolePermissions)) setRolePermissionRows(snapshot.rolePermissions)
-      if (snapshot.overview && typeof snapshot.overview === 'object') setOverviewData(snapshot.overview)
+      if (snapshot.overview && typeof snapshot.overview === 'object') setOverviewData(snapshot.overview.data ?? snapshot.overview)
       if (Array.isArray(snapshot.production)) setHourly(snapshot.production)
+      if (Array.isArray(snapshot.reservoirAnalytics)) setReservoirAnalytics(snapshot.reservoirAnalytics)
       if (snapshot.station && typeof snapshot.station === 'object') setStation(snapshot.station)
       if (snapshot.settings && typeof snapshot.settings === 'object') {
         const remoteSettings = snapshot.settings
@@ -205,7 +224,7 @@ function App() {
       'Gerencie os integrantes e seus níveis de acesso.'
     ],
     settings: [
-      'Configurações', 
+      'Conexão', 
       'Integração, segurança, critérios de alerta e permissões individuais.'
     ],
   }
@@ -237,7 +256,7 @@ function App() {
     ], [
       'settings', 
       '☷', 
-      'Configurações'
+      'Conexão'
     ],
   ]
   const [heading, description] = pageInfo[page] ?? pageInfo.overview
@@ -249,12 +268,28 @@ function App() {
       : (isDemoMode() ? (rolePermissions[selectedPermissionUser?.role] ?? rolePermissions.Operador) : []).reduce((acc, key) => ({ ...acc, [key]: true }), {})
   const selectedPermissions = permissionDraft[permissionUserId] ?? defaultPermissionMap
 
+  // No modo REST, os totais e percentuais vêm exclusivamente de /analytics/overview.
+  // A série /analytics/production continua sendo usada nos gráficos e estatísticas horárias.
   const totals = useMemo(() => {
+    if (!demo) {
+      if (!overviewData) return null
+      return {
+        total: overviewData.totalPieces ?? null,
+        metallic: overviewData.metallicPieces ?? null,
+        nonMetallic: overviewData.nonMetallicPieces ?? null,
+        metallicPercent: overviewData.metallicPercent ?? null,
+        nonMetallicPercent: overviewData.nonMetallicPercent ?? null,
+      }
+    }
     const metallic = hourly.reduce((sum, item) => sum + Number(item.metallic || 0), 0)
     const nonMetallic = hourly.reduce((sum, item) => sum + Number(item.nonMetallic || 0), 0)
     const total = metallic + nonMetallic
-    return { metallic, nonMetallic, total, metallicPercent: total ? Math.round(metallic / total * 100) : 0, nonMetallicPercent: total ? Math.round(nonMetallic / total * 100) : 0 }
-  }, [hourly])
+    return {
+      metallic, nonMetallic, total,
+      metallicPercent: total ? Math.round(metallic / total * 100) : 0,
+      nonMetallicPercent: total ? Math.round(nonMetallic / total * 100) : 0,
+    }
+  }, [demo, hourly, overviewData])
 
   const visibleReadings = useMemo(() => readingsData.filter((reading) =>
     (historyType === 'Todas' || reading.classification === historyType) &&
@@ -451,8 +486,30 @@ function App() {
         <aside className="sidebar">
           <div className="brand"><b>MetalTech</b><small>INDUSTRIAL INTELLIGENCE</small></div>
           <div className="workspace"><small>WORKSPACE</small><span>{station.location ?? 'Estação não informada pela API'}</span></div>
-          <nav>{navItems.filter(([id]) => canAccess(id)).map(([id, icon, label]) => <button key={id} className={page === id ? 'nav-item active' : 'nav-item'} onClick={() => { setPage(id); setFilter('Todas') }}><i>{icon}</i><span>{label}</span>{id === 'alerts' && activeAlerts > 0 && <em>{activeAlerts}</em>}</button>)}</nav>
-          <div className="sidebar-bottom"><div className="integration"><b><i /> {apiStatus === 'demo' ? 'Modo demonstração' : apiStatus === 'connected' ? 'API conectada' : apiStatus === 'partial' ? 'API parcialmente conectada' : apiStatus === 'error' ? 'API indisponível' : 'Verificando API'}</b><small>{onlineSensors}/{sensors.length} sensores online</small></div><div className="profile"><b>{user.name}</b><small>{user.role} · <button onClick={handleLogout}>Sair ↗</button></small></div></div>
+          <nav aria-label="Navegação principal">
+            {navItems.filter(([id]) => canAccess(id)).map(([id, icon, label]) => (
+              <button key={id} className={page === id ? 'nav-item active' : 'nav-item'} onClick={() => { setPage(id); setFilter('Todas') }}>
+                <i>{icon}</i><span>{label}</span>{id === 'alerts' && activeAlerts > 0 && <em>{activeAlerts}</em>}
+              </button>
+            ))}
+            {navItems.every(([id]) => !canAccess(id)) && (
+              <p className="sidebar-permission-warning" role="status">
+                Nenhuma página foi liberada para este usuário. Verifique as permissões retornadas por /auth/me e /permissions/roles.
+              </p>
+            )}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="integration">
+              <b><i />
+                {apiStatus === 'demo' ? 'Modo demonstração' : apiStatus === 'connected' ? 'API conectada' : apiStatus === 'partial' ? 'API parcialmente conectada' : apiStatus === 'error' ? 'API indisponível' : 'Verificando API'}
+              </b>
+              <small>{onlineSensors}/{sensors.length} sensores online</small>
+            </div>
+            <div className="profile">
+              <b>{user.name}</b>
+              <small>{user.role} · <button onClick={handleLogout}>Sair ↗</button>
+            </small>
+            </div></div>
         </aside>
 
         <main className="main-area">
@@ -465,15 +522,16 @@ function App() {
 
                 {page === 'overview' && <>
                   <div className="metric-grid">
-                    <Metric label="Peças no turno" value={number(totals.total)} note={`${hourly.length} registros horários`} />
-                    <Metric label="Peças metálicas" value={number(totals.metallic)} note={`${totals.metallicPercent}% do total`} accent />
-                    <Metric label="Peças não metálicas" value={number(totals.nonMetallic)} note={`${totals.nonMetallicPercent}% do total`} />
+                    <Metric label="Total de peças" value={number(totals?.total)} note={`${hourly.length} registros horários`} />
+                    <Metric label="Peças metálicas" value={number(totals?.metallic)} note={`${totals?.metallicPercent ?? "—"}% do total`} accent />
+                    <Metric label="Peças não metálicas" value={number(totals?.nonMetallic)} note={`${totals?.nonMetallicPercent ?? "—"}% do total`} />
                     <Metric label="Nível do reservatório" value={percent(reservoir.currentLevel)} note={`Atenção a partir de ${reservoir.attentionThreshold}%`} warn={reservoir.currentLevel >= reservoir.attentionThreshold} />
                   </div>
                   <div className="two-col">
                     <Card title="Evolução da triagem" extra={<span className="muted">{station.name}</span>}>
-                      <div className="chart-area"><div className="chart-labels">{['100', '75', '50', '25', '0'].map((label) => <span key={label}>{label}</span>)}</div><LineChart series={[{ label: 'Metálicas por hora', color: 'teal', values: hourly.map((item) => item.metallic) }, { label: 'Não metálicas por hora', color: 'blue', values: hourly.map((item) => item.nonMetallic) }]} /></div>
-                      <div className="legend"><span><i className="dot teal" /> Metálicas por hora</span><span><i className="dot blue" /> Não metálicas por hora</span></div>
+                      <p className="chart-help">Quantidade de peças identificadas em cada hora. Compare as duas séries para perceber mudanças no ritmo e no tipo de produção.</p>
+                      <LineChart series={[{ label: 'Metálicas', color: 'teal', values: hourly.map((item) => item.metallic) }, { label: 'Não metálicas', color: 'blue', values: hourly.map((item) => item.nonMetallic) }]} labels={hourly.map((item) => item.hour)} unit="peças" />
+                      <div className="legend"><span><i className="dot teal" /> Metálicas</span><span><i className="dot blue" /> Não metálicas</span><small>Eixo vertical: peças por hora · Eixo horizontal: horário</small></div>
                     </Card>
                     <ReservoirCard reservoir={reservoir} />
                   </div>
@@ -494,13 +552,18 @@ function App() {
 
                 {page === 'analytics' && <>
                   <div className="filter-bar"><select aria-label="Estação"><option>{station.name}</option></select><select aria-label="Período"><option>Turno atual</option></select><span className="muted">{hourly.length} amostras horárias</span></div>
-                  <div className="analytics-grid"><Card title="Evolução do nível do reservatório"><p className="muted">Acompanhe a tendência e identifique aproximação dos limites.</p><LineChart series={[{ label: 'Nível', color: 'teal', values: hourly.map((item) => item.reservoirLevel) }]} /><div className="analysis-reference"><span>● Atenção: {reservoir.attentionThreshold}%</span><span>● Crítico: {reservoir.criticalThreshold}%</span></div></Card>
-                    <Card title="Composição da produção"><p className="muted">{number(totals.total)} peças classificadas no período</p><HorizontalBar label="Metálicas" value={`${number(totals.metallic)} · ${totals.metallicPercent}%`} percent={totals.metallicPercent} /><HorizontalBar label="Não metálicas" value={`${number(totals.nonMetallic)} · ${totals.nonMetallicPercent}%`} percent={totals.nonMetallicPercent} blue /></Card>
+                  <div className="analytics-grid"><Card title="Evolução do nível do reservatório"><p className="chart-help">Percentual de ocupação medido ao longo do turno. Use as referências abaixo para identificar quando o nível exige atenção.</p><LineChart series={[{ label: 'Nível do reservatório', color: 'teal', values: reservoirAnalytics.map((item) => item.level ?? item.reservoirLevel) }]} labels={reservoirAnalytics.map((item) => item.timestamp ? dateTime(item.timestamp) : item.hour ?? '')} unit="%" fixedMax={100} /><div className="analysis-reference"><span>● Atenção: {reservoir.attentionThreshold}%</span><span>● Crítico: {reservoir.criticalThreshold}%</span></div><small className="chart-footnote">Eixo vertical: ocupação (%) · Eixo horizontal: horário</small></Card>
+                    <Card title="Composição da produção"><p className="chart-help">Distribuição das peças classificadas no período selecionado. As barras mostram a participação de cada tipo no total.</p><div className="composition-total"><strong>{number(totals?.total)}</strong><span>peças no período</span></div><HorizontalBar label="Metálicas" value={`${number(totals?.metallic)} · ${totals?.metallicPercent ?? "—"}%`} percent={totals?.metallicPercent ?? 0} /><HorizontalBar label="Não metálicas" value={`${number(totals?.nonMetallic)} · ${totals?.nonMetallicPercent ?? "—"}%`} percent={totals?.nonMetallicPercent ?? 0} blue /><div className="legend composition-legend"><span><i className="dot teal" /> Metálicas</span><span><i className="dot blue" /> Não metálicas</span></div><small className="chart-footnote">Percentuais fornecidos pelo consolidado da API.</small></Card>
                   </div>
-                  <Card title="Estatística descritiva"><p className="muted">Indicadores por hora e nível do reservatório · {hourly.length} amostras. Média, mediana, mínimo e máximo facilitam comparar produção e estabilidade.</p><StatsTable hourly={hourly} /></Card>
+                  <Card title="Estatística descritiva"><p className="muted">Indicadores por hora e nível do reservatório · {hourly.length} amostras. Média, mediana, mínimo e máximo facilitam comparar produção e estabilidade.</p><StatsTable hourly={hourly} reservoirSeries={reservoirAnalytics} /></Card>
                 </>}
 
                 {page === 'history' && <>
+                  <div className="metric-grid three">
+                    <Metric label="Total de peças no turno" value={number(totals?.total)} note="Resumo do turno informado pela API" />
+                    <Metric label="Peças metálicas" value={number(totals?.metallic)} note={`${totals?.metallicPercent ?? "—"}% do total`} accent />
+                    <Metric label="Peças não metálicas" value={number(totals?.nonMetallic)} note={`${totals?.nonMetallicPercent ?? "—"}% do total`} />
+                  </div>
                   <div className="filter-bar"><span className="filter-context">{station.name} · {readingsData[0] ? dateLabel(readingsData[0].timestamp) : 'Sem leituras'}</span><select value={historyType} onChange={(event) => setHistoryType(event.target.value)} aria-label="Tipo de peça"><option>Todas</option><option>Metálica</option><option>Não metálica</option></select><input aria-label="Buscar leitura" placeholder="Buscar por ID da leitura" value={search} onChange={(event) => setSearch(event.target.value)} /><span className="muted">{visibleReadings.length} resultados</span></div>
                   <div className="history-layout"><Card title="Leituras da esteira" extra={<small className="muted">{visibleReadings.length} registros encontrados</small>}><DataTable rows={visibleReadings} onSelect={setSelected} selected={selected} /></Card>
                     <Card title="Detalhe da leitura selecionada">{selected ? <><div className="reading-title"><h2>#{selected.id}</h2><span className="tag success">{selected.status}</span></div><small className="muted">{dateLabel(selected.timestamp)} · {dateTime(selected.timestamp)}</small>
@@ -523,17 +586,15 @@ function App() {
                   <div className="users-layout"><Card title="Equipe da fábrica" extra={<small className="muted">{users.length} usuários · {users.filter((item) => item.status === 'Ativo').length} ativos · {users.filter((item) => item.status === 'Pendente').length} convites pendentes</small>}>
                     <table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map((item) => <tr key={item.id ?? item.email}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role}</td><td><span className={item.status === 'Ativo' ? 'tag success' : 'tag warning'}>{item.status}</span></td><td>{canAccess('manageUsers') ? <>{item.status !== 'Ativo' && <button className="text-action" onClick={async () => { try { await api.updateUser(item.id, { status: 'Ativo' }); setUsers(await api.listUsers()); notify('Acesso do usuário aprovado') } catch (error) { notify(error.message) } }}>Aprovar acesso</button>} <button className="text-action" onClick={async () => { const name = window.prompt('Nome do usuário:', item.name); if (name === null) return; const email = window.prompt('E-mail:', item.email); if (email === null) return; const role = window.prompt('Perfil (Operador, Analista ou Administrador):', item.role); if (role === null) return; if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['Operador', 'Analista', 'Administrador'].includes(role)) { notify('Confira nome, e-mail e perfil'); return } try { await api.updateUser(item.id, { name: name.trim(), email: email.trim(), role }); setUsers(await api.listUsers()); notify('Usuário atualizado') } catch (error) { notify(error.message) } }}>Editar</button> <button className="text-action" onClick={async () => { if (!window.confirm(`Excluir ${item.name}?`)) return; try { await api.deleteUser(item.id); setUsers(await api.listUsers()); notify('Usuário excluído') } catch (error) { notify(error.message) } }}>Excluir</button></> : <span className="muted">Consulta</span>}</td></tr>)}</tbody></table>
                   </Card>{canAccess('manageUsers') && <Card title="Convidar usuário"><p className="muted">Envie um convite com o perfil adequado.</p><label className="field"><span>Nome</span><input id="invite-name" value={invite.name} onChange={(event) => setInvite({ ...invite, name: event.target.value })} placeholder="Nome completo" /></label><label className="field"><span>E-mail corporativo</span><input type="email" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} placeholder="nome@metaltech.com.br" /></label><label className="field"><span>Perfil de acesso</span><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value })}>{['Operador', 'Analista', 'Administrador'].map((role) => <option key={role}>{role}</option>)}</select></label>{action('Enviar convite', async () => { if (!invite.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email)) { notify('Informe nome e e-mail válido'); return } setBusy(true); try { await api.createUser(invite); setUsers(await api.listUsers()); setInvite({ name: '', email: '', role: 'Operador' }); notify(isDemoMode() ? 'Usuário salvo neste navegador' : 'Convite enviado pela API') } catch (error) { notify(error.message) } finally { setBusy(false) } })}</Card>}</div>
-                  <Card title="Permissões por perfil"><p className="muted">Aplique o menor privilégio necessário para cada integrante.</p><table className="stats-table permission-table"><thead><tr><th>RECURSO</th><th>OPERADOR</th><th>ANALISTA</th><th>ADMINISTRADOR</th></tr></thead><tbody>{rolePermissionRows.map((row) => <tr key={row.resource}>{[row.resource, row.operator, row.analyst, row.administrator].map((value, index) => <td key={`${row.resource}-${index}`} className={index > 0 && value === 'Permitido' ? 'allowed' : ''}>{value}</td>)}</tr>)}</tbody></table></Card>
+                  {canAdmin && <Card title="Permissões individuais de usuários"><p className="muted">Selecione um integrante e personalize as áreas que ele pode acessar. As permissões individuais prevalecem sobre as permissões padrão do perfil.</p>
+                      <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => item.id !== user.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></label>
+                      {selectedPermissionUser && <><div className="permission-check-grid">{[['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['settings', 'Conexão'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']].map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { const permissions = permissionKeys.filter((key) => selectedPermissions[key]); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
+                    </Card>}
                 </>}
 
                 {page === 'settings' && <>
-                  <div className="settings-grid"><Card title="Critérios de alerta"><p className="muted">Reservatório e detecção de comportamento anormal.</p><div className="form-grid">{field('Nível de atenção (%)', 'attention', 'number')}{field('Nível crítico (%)', 'critical', 'number')}{field('Variação em 5 minutos (p.p.)', 'variationInFiveMinutes', 'number')}{field('Intervalo de coleta (s)', 'intervalSeconds', 'number')}</div><small className="orange-text">Atenção: {settings.attention}–{settings.critical}% · Crítico: ≥ {settings.critical}%</small></Card>
+                  <div className="settings-grid">
                     <Card title="Integração da plataforma"><div className="card-status"><span className={`tag ${apiStatus === 'connected' || apiStatus === 'demo' ? 'success' : 'warning'}`}>● {apiStatus === 'connected' ? 'Conectada' : apiStatus === 'demo' ? 'Demonstração' : apiStatus === 'error' ? 'Indisponível' : 'Verificando'}</span></div><p className="muted">O dashboard e os dispositivos conectados utilizam a mesma API.</p>{field('Endereço da API', 'apiUrl')}<div className="form-grid">{field('Identificador do controlador', 'controllerId')}{field('Intervalo de atualização (s)', 'refreshSeconds', 'number')}</div><button className="soft" onClick={async () => { try { const result = await api.health(); setApiStatus(isDemoMode() ? 'demo' : 'connected'); notify(result?.message || 'API respondeu corretamente') } catch (error) { setApiStatus('error'); notify(error.message) } }}>Testar conexão</button>{apiErrors.length > 0 && <div className="api-errors" role="status"><b>Rotas que falharam nesta sincronização</b>{apiErrors.map((item) => <small key={item.resource}>{item.resource}: {item.message}</small>)}</div>}</Card>
-                    <Card title="Estação e reservatório"><p className="muted">Parâmetros cadastrados para a estação.</p>{field('Nome da estação', 'name')}{field('Localização', 'location')}<div className="form-grid">{field('Capacidade (peças)', 'reservoirCapacity', 'number')}{field('Altura útil (cm)', 'reservoirHeight', 'number')}</div></Card>
-                    {canAdmin && <Card title="Permissões individuais de usuários"><p className="muted">Selecione um integrante e personalize as áreas que ele pode acessar. As permissões individuais prevalecem sobre as permissões padrão do perfil.</p>
-                      <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => item.id !== user.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></label>
-                      {selectedPermissionUser && <><div className="permission-check-grid">{[['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['settings', 'Configurações'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']].map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { const permissions = permissionKeys.filter((key) => selectedPermissions[key]); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
-                    </Card>}
                   </div>
                 </>}
 
@@ -566,58 +627,73 @@ function Sensor({ sensor }) {
   return <Card title={title} extra={<span className={`tag ${sensor.status === 'Online' ? 'success' : 'warning'}`}>● {sensor.status}</span>}><small className="muted">Identificador: {sensor.id}</small><div className="sensor-value">{value}</div><b className="sensor-detail">{detail}</b><small className="muted tiny">Último sinal: {dateTime(sensor.lastSeenAt)}</small></Card>
 }
 function DataTable({ rows, onSelect, selected }) { return <table className="data-table"><thead><tr>{['HORÁRIO', 'ID DA LEITURA', 'TIPO DA PEÇA', 'NÍVEL', 'STATUS'].map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((reading) => <tr key={reading.id} className={selected?.id === reading.id ? 'row-selected' : ''} onClick={() => onSelect?.(reading)}><td>{dateTime(reading.timestamp)}</td><td><b>#{reading.id}</b></td><td><span className={reading.classification === 'Metálica' ? 'tag teal-tag' : 'tag blue-tag'}>{reading.classification}</span></td><td>{percent(reading.reservoirLevel)}</td><td className="teal-text">{reading.status}</td></tr>)}</tbody></table> }
-function LineChart({ series = [] }) {
-  const max = Math.max(100, ...series.flatMap((item) => item.values.map(Number)))
-  const pathFor = (values) => values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 600},${160 - (Number(value) / max) * 140}`).join(' ')
-  return <svg className="line-chart" viewBox="0 0 600 170" preserveAspectRatio="none" role="img" aria-label="Gráfico de evolução de indicadores"><g stroke="#e7edf2" strokeWidth="1">{[20, 55, 90, 125, 160].map((y) => <path key={y} d={`M0 ${y}H600`} />)}</g>{series.map((item) => <polyline key={item.label} points={pathFor(item.values)} fill="none" stroke={item.color === 'blue' ? '#5478cf' : '#00877f'} strokeWidth="3" strokeDasharray={item.color === 'blue' ? '5 4' : undefined} />)}</svg>
+function LineChart({ series = [], labels = [], unit = '', fixedMax = null }) {
+  const allValues = series.flatMap((item) => (item.values || []).map(Number).filter(Number.isFinite))
+  const max = fixedMax ?? Math.max(1, ...allValues) * 1.12
+  const min = fixedMax === 100 ? 0 : Math.min(0, ...allValues)
+  const x = (index, length) => 42 + (index / Math.max(length - 1, 1)) * 530
+  const y = (value) => 150 - ((Number(value) - min) / Math.max(max - min, 1)) * 125
+  const ticks = fixedMax === 100 ? [100, 75, 50, 25, 0] : [max, max * .75, max * .5, max * .25, 0]
+  const hasData = series.some((item) => (item.values || []).length)
+  if (!hasData) return <div className="chart-empty">Aguardando dados da API para montar o gráfico.</div>
+  return <div className="chart-visual">
+    <svg className="line-chart" viewBox="0 0 600 178" role="img" aria-label="Gráfico de linhas com evolução por horário">
+      {ticks.map((tick, index) => <g key={index}><line x1="42" x2="575" y1={y(tick)} y2={y(tick)} stroke="#e7edf2" strokeWidth="1" /><text x="34" y={y(tick) + 3} textAnchor="end" fill="#8798aa" fontSize="10">{Math.round(tick)}{unit === '%' ? '%' : ''}</text></g>)}
+      {series.map((item) => {
+        const values = item.values || []
+        const points = values.map((value, index) => `${x(index, values.length)},${y(value)}`).join(' ')
+        return <g key={item.label}>
+          <polyline points={points} fill="none" stroke={item.color === 'blue' ? '#5878cf' : '#00877f'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray={item.color === 'blue' ? '6 4' : undefined} />
+          {values.map((value, index) => <circle key={`${item.label}-${index}`} cx={x(index, values.length)} cy={y(value)} r="3.5" fill={item.color === 'blue' ? '#5878cf' : '#00877f'} stroke="#fff" strokeWidth="1.5"><title>{`${item.label}: ${value}${unit === '%' ? '%' : ` ${unit}`}${labels[index] ? ` · ${labels[index]}` : ''}`}</title></circle>)}
+        </g>
+      })}
+      {labels.map((label, index) => <text key={`${label}-${index}`} x={x(index, labels.length)} y="171" textAnchor="middle" fill="#8798aa" fontSize="10">{label}</text>)}
+    </svg>
+  </div>
 }
 function HorizontalBar({ label, value, percent: amount, blue }) { return <div className="hbar-row"><span>{label}</span><div><i style={{ width: `${amount}%`, background: blue ? '#5878cf' : '#00877f' }} /></div><b>{value}</b></div> }
-function StatsTable({ hourly }) {
-  const metallic = hourly.map((item) => item.metallic)
-  const nonMetallic = hourly.map((item) => item.nonMetallic)
-  const level = hourly.map((item) => item.reservoirLevel)
+function StatsTable({ hourly, reservoirSeries = [] }) {
+  const numericValues = (key) => hourly
+    .map((item) => item?.[key])
+    .filter((value) => value !== null && value !== undefined && value !== '')
+    .map(Number)
+    .filter(Number.isFinite)
+  const describe = (values) => {
+    if (!values.length) return { average: null, median: null, count: 0, min: null, max: null, deviation: null }
+    const average = avg(values)
+    const deviation = Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length)
+    return {
+      average,
+      median: median(values),
+      count: values.length,
+      min: Math.min(...values),
+      max: Math.max(...values),
+      deviation,
+    }
+  }
+  const metallic = describe(numericValues('metallic'))
+  const nonMetallic = describe(numericValues('nonMetallic'))
+  const levelValues = reservoirSeries.length
+    ? reservoirSeries.map((item) => item?.level ?? item?.reservoirLevel).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite)
+    : numericValues('reservoirLevel')
+  const level = describe(levelValues)
   const rows = [
-    [
-      'Média', 
-      avg(metallic), 
-      avg(nonMetallic), 
-      avg(level)
-    ],
-    [
-      'Mediana (Q2)', 
-      median(metallic), 
-      median(nonMetallic), 
-      median(level)
-    ],
-    [
-      'Amostras', 
-      metallic.length, 
-      nonMetallic.length, 
-      level.length
-    ],
-    [
-      'Mínimo', 
-      metallic.length ? Math.min(...metallic) : 0, 
-      nonMetallic.length ? Math.min(...nonMetallic) : 0, 
-      level.length ? Math.min(...level) : 0
-    ],
-    [
-      'Máximo', 
-      metallic.length ? Math.max(...metallic) : 0, 
-      nonMetallic.length ? Math.max(...nonMetallic) : 0, 
-      level.length ? Math.max(...level) : 0
-    ],
+    ['Média', metallic.average, nonMetallic.average, level.average],
+    ['Mediana (Q2)', metallic.median, nonMetallic.median, level.median],
+    ['Amostras válidas', metallic.count, nonMetallic.count, level.count],
+    ['Mínimo', metallic.min, nonMetallic.min, level.min],
+    ['Máximo', metallic.max, nonMetallic.max, level.max],
+    ['Desvio padrão', metallic.deviation, nonMetallic.deviation, level.deviation],
   ]
-  return  <table className="stats-table">
-            <thead>
-               <tr>
-                 <th>MEDIDA</th>
-                 <th>METÁLICAS (PEÇAS/H)</th>
-                 <th>NÃO METÁLICAS (PEÇAS/H)</th>
-                 <th>NÍVEL (%)</th></tr>
-            </thead>
-            <tbody>{rows.map((row) => <tr key={row[0]}>{row.map((value, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? value : Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}</td>)}</tr>)}</tbody>
-          </table>
+  const format = (value) => value == null ? '—' : Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+  if (!hourly.length) return <div className="chart-empty">Aguardando dados de produção da API para calcular as estatísticas.</div>
+  return <>
+    <table className="stats-table">
+      <thead><tr><th>MEDIDA</th><th>METÁLICAS (PEÇAS/H)</th><th>NÃO METÁLICAS (PEÇAS/H)</th><th>NÍVEL (%)</th></tr></thead>
+      <tbody>{rows.map((row) => <tr key={row[0]}>{row.map((value, index) => <td key={`${row[0]}-${index}`}>{index === 0 ? value : format(value)}</td>)}</tr>)}</tbody>
+    </table>
+    <p className="chart-footnote">Cálculos de produção realizados sobre /analytics/production e nível sobre /analytics/reservoir (com fallback para reservoirLevel dos registros de produção quando a série dedicada não estiver disponível). Campos ausentes são ignorados; “Amostras válidas” informa quantos valores entraram em cada cálculo. O desvio padrão representa a dispersão dos valores em relação à média.</p>
+  </>
 }
 
 export default App

@@ -80,7 +80,7 @@ export const metalTechData = {
       analytics: {
         overview: { method: 'GET', path: '/analytics/overview' }, // response: { totalPieces, metallicPieces, nonMetallicPieces, metallicPercent, nonMetallicPercent, period, updatedAt }
         production: { method: 'GET', path: '/analytics/production' }, // query: stationId, from, to, interval; response: [{ hour, metallic, nonMetallic, reservoirLevel }]
-        reservoir: { method: 'GET', path: '/analytics/reservoir' }, // query: stationId, from, to, interval; response: [{ timestamp, level, distance }]
+        reservoir: { method: 'GET', path: '/analytics/reservoir' }, // query: stationId, from, to, interval; response: [{ timestamp, level, distance }] — alimenta o gráfico e a estatística do reservatório
       },
       alerts: {
         list: { method: 'GET', path: '/alerts' }, // query: status, severity, stationId, from, to; response: Alert[]

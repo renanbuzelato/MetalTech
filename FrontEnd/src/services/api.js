@@ -108,8 +108,9 @@ export const api = {
       try {
         const route = endpoint('auth', 'login')
         const result = await http(route.path, { method: route.method, body: { email: credentials.email, password: credentials.password }, auth: false })
-        const token = result?.[config.auth.responseTokenField] || result?.token || result?.accessToken
-        const user = result?.[config.auth.responseUserField] || result?.user
+        const authPayload = result?.data ?? result
+        const token = authPayload?.[config.auth.responseTokenField] || authPayload?.token || authPayload?.accessToken
+        const user = authPayload?.[config.auth.responseUserField] || authPayload?.user || result?.user
         if (!token || !user) throw new Error('Resposta de login inválida: esperado token e usuário.')
         saveSession(user, token, credentials.remember !== false)
         return user
@@ -171,7 +172,10 @@ export const api = {
   async me() {
     if (isDemoMode()) return getStoredSession()
     const route = endpoint('auth', 'me')
-    return unwrapObject(await http(route.path, { method: route.method }))
+    const result = await http(route.path, { method: route.method })
+    const payload = result?.data ?? result
+    // Aceita { user }, { data: { user } } ou o próprio objeto User.
+    return payload?.user ?? payload
   },
 
   async getStation() {
@@ -213,6 +217,15 @@ export const api = {
   async listProduction(query = {}) {
     if (isDemoMode()) return metalTechData.operation.hourlyProduction
     const route = endpoint('analytics', 'production')
+    return unwrapList(await http(route.path, { method: route.method, query }))
+  },
+
+  async listReservoirAnalytics(query = {}) {
+    if (isDemoMode()) return metalTechData.operation.hourlyProduction.map((item) => ({
+      timestamp: item.hour,
+      level: item.reservoirLevel,
+    }))
+    const route = endpoint('analytics', 'reservoir')
     return unwrapList(await http(route.path, { method: route.method, query }))
   },
 
@@ -307,10 +320,10 @@ export const api = {
 
   // Snapshot único para manter todas as telas sincronizadas com o mesmo ciclo de atualização.
   async refreshAll() {
-    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'settings', 'station', 'reservoir', 'rolePermissions', 'overview', 'currentUser']
+    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'reservoirAnalytics', 'settings', 'station', 'reservoir', 'rolePermissions', 'overview', 'currentUser']
     const requests = [
       this.listUsers(), this.listAlerts(), this.listReadings(), this.listSensors(),
-      this.listProduction(), this.getSettings(), this.getStation(), this.getReservoirStatus(),
+      this.listProduction(), this.listReservoirAnalytics(), this.getSettings(), this.getStation(), this.getReservoirStatus(),
       this.listRolePermissions(), this.getOverview(), this.me(),
     ]
     const results = await Promise.allSettled(requests)

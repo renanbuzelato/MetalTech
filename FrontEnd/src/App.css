@@ -25,3 +25,20 @@
   background: rgba(220, 120, 60, .07);
 }
 .api-errors small { color: var(--muted, #9aa4ad); overflow-wrap: anywhere; }
+
+.sidebar-permission-warning{margin:12px 7px;padding:10px;border:1px solid #526477;border-radius:6px;color:#dce6ef;font-size:10px;line-height:1.5}
+
+/* Melhorias de leitura dos gráficos de produção e análise */
+.chart-help{font-size:11px;line-height:1.55;color:#718399;margin:0 0 12px}
+.chart-visual{width:100%;overflow-x:auto}
+.line-chart{display:block;width:100%;height:190px;min-width:320px;overflow:visible}
+.chart-empty{display:flex;align-items:center;justify-content:center;min-height:150px;padding:18px;border:1px dashed #ccd6df;border-radius:7px;color:#8292a3;font-size:11px;text-align:center;background:#fafcfd}
+.legend{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:8px 0 0 0;color:#718399;font-size:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend small,.chart-footnote{flex-basis:100%;display:block;color:#8798aa;font-size:9px;margin-top:4px}
+.composition-total{display:flex;align-items:baseline;gap:8px;margin:14px 0 4px}
+.composition-total strong{font-size:25px;color:#26384a}
+.composition-total span{font-size:10px;color:#8798aa}
+.composition-legend{margin-top:14px}
+.analysis-reference{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:10px;color:#718399}
+@media(max-width:780px){.line-chart{height:175px}.legend{gap:10px}}
