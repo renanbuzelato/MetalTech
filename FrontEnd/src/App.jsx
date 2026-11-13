@@ -527,14 +527,8 @@ function App() {
                     <Metric label="Peças não metálicas" value={number(totals?.nonMetallic)} note={`${totals?.nonMetallicPercent ?? "—"}% do total`} />
                     <Metric label="Nível do reservatório" value={percent(reservoir.currentLevel)} note={`Atenção a partir de ${reservoir.attentionThreshold}%`} warn={reservoir.currentLevel >= reservoir.attentionThreshold} />
                   </div>
-                  <div className="two-col">
-                    <Card title="Evolução da triagem" extra={<span className="muted">{station.name}</span>}>
-                      <p className="chart-help">Quantidade de peças identificadas em cada hora. Compare as duas séries para perceber mudanças no ritmo e no tipo de produção.</p>
-                      <LineChart series={[{ label: 'Metálicas', color: 'teal', values: hourly.map((item) => item.metallic) }, { label: 'Não metálicas', color: 'blue', values: hourly.map((item) => item.nonMetallic) }]} labels={hourly.map((item) => item.hour)} unit="peças" />
-                      <div className="legend"><span><i className="dot teal" /> Metálicas</span><span><i className="dot blue" /> Não metálicas</span><small>Eixo vertical: peças por hora · Eixo horizontal: horário</small></div>
-                    </Card>
                     <ReservoirCard reservoir={reservoir} />
-                  </div>
+                  <div className="two-col"></div>
                   <div className="two-col"><Card title="Leituras recentes"><DataTable rows={readingsData.slice(0, 5)} onSelect={setSelected} selected={selected} /></Card>
                     <Card title="Saúde da integração"><div className="health"><b><i className="dot teal" /> Sistema operacional</b><span className="tag success">{onlineSensors === sensors.length ? 'Conectado' : 'Instável'}</span></div>
                       {sensors.map((sensor) => <div className="health-row" key={sensor.id}><span>{sensorLabel(sensor.type)}</span><b>{sensor.status}</b></div>)}
@@ -593,8 +587,8 @@ function App() {
                 </>}
 
                 {page === 'settings' && <>
-                  <div className="settings-grid">
                     <Card title="Integração da plataforma"><div className="card-status"><span className={`tag ${apiStatus === 'connected' || apiStatus === 'demo' ? 'success' : 'warning'}`}>● {apiStatus === 'connected' ? 'Conectada' : apiStatus === 'demo' ? 'Demonstração' : apiStatus === 'error' ? 'Indisponível' : 'Verificando'}</span></div><p className="muted">O dashboard e os dispositivos conectados utilizam a mesma API.</p>{field('Endereço da API', 'apiUrl')}<div className="form-grid">{field('Identificador do controlador', 'controllerId')}{field('Intervalo de atualização (s)', 'refreshSeconds', 'number')}</div><button className="soft" onClick={async () => { try { const result = await api.health(); setApiStatus(isDemoMode() ? 'demo' : 'connected'); notify(result?.message || 'API respondeu corretamente') } catch (error) { setApiStatus('error'); notify(error.message) } }}>Testar conexão</button>{apiErrors.length > 0 && <div className="api-errors" role="status"><b>Rotas que falharam nesta sincronização</b>{apiErrors.map((item) => <small key={item.resource}>{item.resource}: {item.message}</small>)}</div>}</Card>
+                  <div className="settings-grid">
                   </div>
                 </>}
 
@@ -618,7 +612,14 @@ function Progress({ value }) { return <div className="progress"><i style={{ widt
 function ReservoirCard({ reservoir }) {
   const status = reservoir.currentLevel >= reservoir.criticalThreshold ? 'Crítico' : reservoir.currentLevel >= reservoir.attentionThreshold ? 'Atenção' : 'Normal'
   const stored = reservoir.capacity == null || reservoir.currentLevel == null ? null : reservoir.capacity * reservoir.currentLevel / 100
-  return <Card title="Reservatório de saída"><div className="tank-number">{percent(reservoir.currentLevel)} <span className={`tag ${status === 'Normal' ? 'success' : 'warning'}`}>{status}</span></div><p className="muted">{number(stored)} peças armazenadas · capacidade: {number(reservoir.capacity)}</p><Progress value={reservoir.currentLevel} /><small>Distância até as peças: {reservoir.distance} cm</small><p className="muted tiny">{status === 'Crítico' ? 'Esvaziamento imediato recomendado.' : status === 'Atenção' ? `Esvaziar antes de atingir ${reservoir.criticalThreshold}%.` : 'Nível dentro da faixa normal.'}</p></Card>
+  return <Card title="Reservatório de saída">
+            <div className="tank-number">
+              {percent(reservoir.currentLevel)} 
+              <span className={`tag ${status === 'Normal' ? 'success' : 'warning'}`}>
+                {status}
+                </span>
+            </div>
+              <Progress value={reservoir.currentLevel} /><small>Distância até as peças: {reservoir.distance} cm</small><p className="muted tiny">{status === 'Crítico' ? 'Esvaziamento imediato recomendado.' : status === 'Atenção' ? `Esvaziar antes de atingir ${reservoir.criticalThreshold}%.` : 'Nível dentro da faixa normal.'}</p></Card>
 }
 function Sensor({ sensor }) {
   const title = sensorLabel(sensor.type)
