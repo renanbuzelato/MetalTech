@@ -40,26 +40,34 @@ public class ApiGlobalController {
     }
 
     private void inicializarDadosBase() {
-        usersStore.add(new ConcurrentHashMap<>(Map.of(
-                "id", "USR-000", "name", "Administrador", "email", "adm@metaltech.com.br",
-                "role", "Administrador", "status", "Ativo",
-                "permissions", List.of("Monitorar e consultar leituras", "Reconhecer alertas", "Exportar análises e históricos", "Editar regras, estações e usuários")
-        )));
-        usersStore.add(new ConcurrentHashMap<>(Map.of(
-                "id", "USR-001", "name", "Rhuan Oliveira", "email", "rhuan.oliveira@metaltech.com.br",
-                "role", "Administrador", "status", "Ativo",
-                "permissions", List.of("Monitorar e consultar leituras", "Reconhecer alertas", "Exportar análises e históricos", "Editar regras, estações e usuários")
-        )));
-        usersStore.add(new ConcurrentHashMap<>(Map.of(
-                "id", "USR-002", "name", "João Santos", "email", "joao.santos@metaltech.com.br",
-                "role", "Operador", "status", "Ativo",
-                "permissions", List.of("Monitorar e consultar leituras", "Reconhecer alertas")
-        )));
-        usersStore.add(new ConcurrentHashMap<>(Map.of(
-                "id", "USR-003", "name", "Ana Souza", "email", "ana.souza@metaltech.com.br",
-                "role", "Analista", "status", "Ativo",
-                "permissions", List.of("Monitorar e consultar leituras", "Exportar análises e históricos")
-        )));
+        // 1. Usuário Admin (acesso total e protegido contra exclusão)
+        Map<String, Object> admin = new ConcurrentHashMap<>();
+        admin.put("id", "USR-001");
+        admin.put("name", "Admin");
+        admin.put("email", "adm@metaltech.com.br");
+        admin.put("password", "123");
+        admin.put("role", "Administrador");
+        admin.put("status", "Ativo");
+        admin.put("permissions", List.of(
+                "Monitorar e consultar leituras",
+                "Reconhecer alertas",
+                "Exportar análises e históricos",
+                "Editar regras, estações e usuários"
+        ));
+        usersStore.add(admin);
+
+        // 2. Usuário Comum - Rhuan (somente visualização)
+        Map<String, Object> rhuan = new ConcurrentHashMap<>();
+        rhuan.put("id", "USR-002");
+        rhuan.put("name", "Rhuan");
+        rhuan.put("email", "rhuan@metaltech.com.br");
+        rhuan.put("password", "123");
+        rhuan.put("role", "Analista");
+        rhuan.put("status", "Ativo");
+        rhuan.put("permissions", List.of(
+                "Monitorar e consultar leituras"
+        ));
+        usersStore.add(rhuan);
 
         stationsStore.add(new ConcurrentHashMap<>(Map.of(
                 "id", "ET-001", "name", "Esteira de triagem 01", "location", "Linha A · Fábrica São Paulo",
@@ -87,7 +95,7 @@ public class ApiGlobalController {
                 "twoFactorEnabled", true, "auditEnabled", true, "sessionTimeoutMinutes", 30
         )));
 
-        registrarAuditoria("USR-000", "SYSTEM_INIT", "Backend MetalTech API v1 inicializado");
+        registrarAuditoria("USR-001", "SYSTEM_INIT", "Backend MetalTech API v1 inicializado com Admin e Rhuan");
     }
 
     // ==================== HEALTH & REALTIME SSE ====================
@@ -124,9 +132,12 @@ public class ApiGlobalController {
                         )
                 );
                 emitter.send(SseEmitter.event().name("message").data(payload));
-            } catch (Exception e) {
+            } catch (IOException | IllegalStateException e) {
                 executor.shutdown();
                 emitter.complete();
+            } catch (Exception e) {
+                executor.shutdown();
+                emitter.completeWithError(e);
             }
         };
 
@@ -152,47 +163,6 @@ public class ApiGlobalController {
             return error(HttpStatus.BAD_REQUEST, "E-mail e senha são obrigatórios.", "INVALID_CREDENTIALS");
         }
 
-        // Validação estrita para o Administrador padrão
-        if ("adm@metaltech.com.br".equals(email) && "12".equals(password)) {
-            Map<String, Object> adminUser = null;
-            
-            for (Object obj : usersStore) {
-                Map<String, Object> u = (Map<String, Object>) obj;
-                if ("adm@metaltech.com.br".equalsIgnoreCase(String.valueOf(u.get("email")))) {
-                    adminUser = u;
-                    break;
-                }
-            }
-
-            if (adminUser == null) {
-                adminUser = new ConcurrentHashMap<>();
-                adminUser.put("id", "USR-000");
-                adminUser.put("name", "Administrador");
-                adminUser.put("email", "adm@metaltech.com.br");
-                adminUser.put("role", "Administrador");
-                adminUser.put("status", "Ativo");
-                adminUser.put("permissions", List.of(
-                    "Monitorar e consultar leituras", 
-                    "Reconhecer alertas", 
-                    "Exportar análises e históricos", 
-                    "Editar regras, estações e usuários"
-                ));
-                usersStore.add(0, adminUser);
-            }
-
-            String token = "mt-jwt-" + UUID.randomUUID();
-            String refreshToken = "mt-ref-" + UUID.randomUUID();
-            activeTokens.put(token, adminUser);
-            registrarAuditoria(String.valueOf(adminUser.get("id")), "AUTH_LOGIN", "Login realizado: " + email);
-
-            return ResponseEntity.ok(Map.of(
-                    "token", token,
-                    "refreshToken", refreshToken,
-                    "user", adminUser
-            ));
-        }
-
-        // Validação para demais utilizadores cadastrados
         Map<String, Object> user = null;
         for (Object obj : usersStore) {
             Map<String, Object> u = (Map<String, Object>) obj;
@@ -203,6 +173,11 @@ public class ApiGlobalController {
         }
 
         if (user == null) {
+            return error(HttpStatus.UNAUTHORIZED, "E-mail ou senha incorretos.", "INVALID_CREDENTIALS");
+        }
+
+        String savedPassword = String.valueOf(user.getOrDefault("password", "123"));
+        if (!savedPassword.equals(password)) {
             return error(HttpStatus.UNAUTHORIZED, "E-mail ou senha incorretos.", "INVALID_CREDENTIALS");
         }
 
@@ -222,25 +197,27 @@ public class ApiGlobalController {
     public ResponseEntity register(@RequestBody Map<String, String> body) {
         String name = body.getOrDefault("name", "").trim();
         String email = body.getOrDefault("email", "").trim().toLowerCase();
+        String password = body.getOrDefault("password", "123");
 
         if (name.isEmpty() || email.isEmpty()) {
             return error(HttpStatus.BAD_REQUEST, "Nome e e-mail são obrigatórios.", "VALIDATION_ERROR");
         }
 
-        boolean exists = usersStore.stream().anyMatch(u -> email.equalsIgnoreCase(String.valueOf(((Map)u).get("email"))));
+        boolean exists = usersStore.stream().anyMatch(u -> email.equalsIgnoreCase(String.valueOf(((Map) u).get("email"))));
         if (exists) {
             return error(HttpStatus.CONFLICT, "E-mail já cadastrado.", "EMAIL_EXISTS");
         }
 
-        String newId = String.format("USR-%03d", usersStore.size() + 1);
-        Map<String, Object> newUser = new ConcurrentHashMap<>(Map.of(
-                "id", newId,
-                "name", name,
-                "email", email,
-                "role", "Operador",
-                "status", "Pendente",
-                "permissions", List.of("Monitorar e consultar leituras")
-        ));
+        String newId = gerarProximoUserId();
+        Map<String, Object> newUser = new ConcurrentHashMap<>();
+        newUser.put("id", newId);
+        newUser.put("name", name);
+        newUser.put("email", email);
+        newUser.put("password", password);
+        newUser.put("role", "Operador");
+        newUser.put("status", "Pendente");
+        newUser.put("permissions", List.of("Monitorar e consultar leituras"));
+
         usersStore.add(newUser);
         registrarAuditoria(newId, "AUTH_REGISTER", "Cadastro público aguardando aprovação: " + email);
 
@@ -281,6 +258,25 @@ public class ApiGlobalController {
 
     // ==================== USERS ====================
 
+    private synchronized String gerarProximoUserId() {
+        int maxId = 99;
+        for (Object obj : usersStore) {
+            Map<String, Object> u = (Map<String, Object>) obj;
+            String idStr = String.valueOf(u.getOrDefault("id", ""));
+            String numericPart = idStr.replaceAll("[^0-9]", "");
+            if (!numericPart.isEmpty()) {
+                try {
+                    int val = Integer.parseInt(numericPart);
+                    if (val > maxId) {
+                        maxId = val;
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+        return String.format("USR-%03d", maxId + 1);
+    }
+
     @GetMapping("/users")
     public List listUsers() {
         return usersStore;
@@ -288,17 +284,27 @@ public class ApiGlobalController {
 
     @PostMapping("/users")
     public ResponseEntity createUser(@RequestBody Map<String, Object> body) {
-        String id = String.format("USR-%03d", usersStore.size() + 1);
+        String email = String.valueOf(body.getOrDefault("email", "")).trim().toLowerCase();
+        if (!email.isEmpty()) {
+            boolean exists = usersStore.stream().anyMatch(u -> email.equalsIgnoreCase(String.valueOf(((Map) u).get("email"))));
+            if (exists) {
+                return error(HttpStatus.CONFLICT, "E-mail já cadastrado.", "EMAIL_EXISTS");
+            }
+        }
+
+        String id = gerarProximoUserId();
         String role = String.valueOf(body.getOrDefault("role", "Operador"));
         Map<String, Object> user = new ConcurrentHashMap<>();
         user.put("id", id);
         user.put("name", body.getOrDefault("name", "Novo Usuário"));
-        user.put("email", body.getOrDefault("email", id.toLowerCase() + "@metaltech.com.br"));
+        user.put("email", email.isEmpty() ? id.toLowerCase() + "@metaltech.com.br" : email);
+        user.put("password", body.getOrDefault("password", "123"));
         user.put("role", role);
         user.put("status", body.getOrDefault("status", "Ativo"));
         user.put("permissions", body.getOrDefault("permissions", List.of("Monitorar e consultar leituras")));
+
         usersStore.add(user);
-        registrarAuditoria("USR-000", "USER_CREATE", "Usuário criado: " + id);
+        registrarAuditoria("USR-001", "USER_CREATE", "Usuário criado: " + id);
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 
@@ -307,10 +313,18 @@ public class ApiGlobalController {
         for (Object obj : usersStore) {
             Map<String, Object> u = (Map<String, Object>) obj;
             if (id.equals(u.get("id"))) {
+                boolean isMainAdmin = "USR-001".equalsIgnoreCase(id)
+                        || "adm@metaltech.com.br".equalsIgnoreCase(String.valueOf(u.getOrDefault("email", "")));
+
                 body.forEach((k, v) -> {
-                    if (v != null && !"id".equals(k)) u.put(k, v);
+                    if (v != null && !"id".equals(k)) {
+                        if (isMainAdmin && ("role".equals(k) || "status".equals(k))) {
+                            return;
+                        }
+                        u.put(k, v);
+                    }
                 });
-                registrarAuditoria("USR-000", "USER_UPDATE", "Usuário atualizado: " + id);
+                registrarAuditoria("USR-001", "USER_UPDATE", "Usuário atualizado: " + id);
                 return ResponseEntity.ok(u);
             }
         }
@@ -319,11 +333,22 @@ public class ApiGlobalController {
 
     @DeleteMapping("/users/{id}")
     public ResponseEntity deleteUser(@PathVariable String id) {
-        boolean removed = usersStore.removeIf(u -> id.equals(((Map)u).get("id")));
+        for (Object obj : usersStore) {
+            Map<String, Object> u = (Map<String, Object>) obj;
+            if (id.equals(u.get("id"))) {
+                String email = String.valueOf(u.getOrDefault("email", ""));
+                if ("USR-001".equalsIgnoreCase(id) || "adm@metaltech.com.br".equalsIgnoreCase(email)) {
+                    return error(HttpStatus.FORBIDDEN, "O perfil Administrador principal não pode ser excluído.", "ADMIN_PROTECTED");
+                }
+                break;
+            }
+        }
+
+        boolean removed = usersStore.removeIf(u -> id.equals(((Map) u).get("id")));
         if (!removed) {
             return error(HttpStatus.NOT_FOUND, "Usuário não encontrado.", "USER_NOT_FOUND");
         }
-        registrarAuditoria("USR-000", "USER_DELETE", "Usuário removido: " + id);
+        registrarAuditoria("USR-001", "USER_DELETE", "Usuário removido: " + id);
         return ResponseEntity.ok(Map.of("message", "Usuário removido com sucesso.", "id", id));
     }
 
@@ -361,7 +386,7 @@ public class ApiGlobalController {
         st.put("shift", body.getOrDefault("shift", "Turno 06:00–14:32"));
         st.put("controllerId", body.getOrDefault("controllerId", "CLP-001"));
         stationsStore.add(st);
-        registrarAuditoria("USR-000", "STATION_CREATE", "Estação criada: " + id);
+        registrarAuditoria("USR-001", "STATION_CREATE", "Estação criada: " + id);
         return ResponseEntity.status(HttpStatus.CREATED).body(st);
     }
 
@@ -373,7 +398,7 @@ public class ApiGlobalController {
                 body.forEach((k, v) -> {
                     if (v != null && !"id".equals(k)) st.put(k, v);
                 });
-                registrarAuditoria("USR-000", "STATION_UPDATE", "Estação atualizada: " + id);
+                registrarAuditoria("USR-001", "STATION_UPDATE", "Estação atualizada: " + id);
                 return ResponseEntity.ok(st);
             }
         }
@@ -382,11 +407,11 @@ public class ApiGlobalController {
 
     @DeleteMapping("/stations/{id}")
     public ResponseEntity deleteStation(@PathVariable String id) {
-        boolean removed = stationsStore.removeIf(st -> id.equals(((Map)st).get("id")));
+        boolean removed = stationsStore.removeIf(st -> id.equals(((Map) st).get("id")));
         if (!removed) {
             return error(HttpStatus.NOT_FOUND, "Estação não encontrada.", "STATION_NOT_FOUND");
         }
-        registrarAuditoria("USR-000", "STATION_DELETE", "Estação removida: " + id);
+        registrarAuditoria("USR-001", "STATION_DELETE", "Estação removida: " + id);
         return ResponseEntity.ok(Map.of("message", "Estação removida.", "id", id));
     }
 
@@ -509,9 +534,9 @@ public class ApiGlobalController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         return (List) alertsStore.stream()
-                .filter(a -> status == null || status.isBlank() || status.equalsIgnoreCase(String.valueOf(((Map)a).get("status"))))
-                .filter(a -> severity == null || severity.isBlank() || severity.equalsIgnoreCase(String.valueOf(((Map)a).get("severity"))))
-                .filter(a -> stationId == null || stationId.isBlank() || stationId.equalsIgnoreCase(String.valueOf(((Map)a).get("stationId"))))
+                .filter(a -> status == null || status.isBlank() || status.equalsIgnoreCase(String.valueOf(((Map) a).get("status"))))
+                .filter(a -> severity == null || severity.isBlank() || severity.equalsIgnoreCase(String.valueOf(((Map) a).get("severity"))))
+                .filter(a -> stationId == null || stationId.isBlank() || stationId.equalsIgnoreCase(String.valueOf(((Map) a).get("stationId"))))
                 .collect(Collectors.toList());
     }
 
@@ -534,7 +559,7 @@ public class ApiGlobalController {
                 body.forEach((k, v) -> {
                     if (v != null && !"id".equals(k)) alert.put(k, v);
                 });
-                registrarAuditoria("USR-000", "ALERT_UPDATE", "Alerta atualizado: " + id + " -> " + alert.get("status"));
+                registrarAuditoria("USR-001", "ALERT_UPDATE", "Alerta atualizado: " + id + " -> " + alert.get("status"));
                 return ResponseEntity.ok(alert);
             }
         }
@@ -553,7 +578,7 @@ public class ApiGlobalController {
         body.forEach((k, v) -> {
             if (v != null) settingsStore.put(k, v);
         });
-        registrarAuditoria("USR-000", "SETTINGS_UPDATE", "Configurações operacionais atualizadas");
+        registrarAuditoria("USR-001", "SETTINGS_UPDATE", "Configurações operacionais atualizadas");
         return settingsStore;
     }
 
@@ -566,8 +591,8 @@ public class ApiGlobalController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "100") int limit) {
         return (List) auditLogsStore.stream()
-                .filter(log -> actorId == null || actorId.isBlank() || actorId.equalsIgnoreCase(String.valueOf(((Map)log).get("actorId"))))
-                .filter(log -> action == null || action.isBlank() || action.equalsIgnoreCase(String.valueOf(((Map)log).get("action"))))
+                .filter(log -> actorId == null || actorId.isBlank() || actorId.equalsIgnoreCase(String.valueOf(((Map) log).get("actorId"))))
+                .filter(log -> action == null || action.isBlank() || action.equalsIgnoreCase(String.valueOf(((Map) log).get("action"))))
                 .skip((long) Math.max(0, page - 1) * Math.max(1, limit))
                 .limit(Math.max(1, limit))
                 .collect(Collectors.toList());
@@ -593,14 +618,14 @@ public class ApiGlobalController {
         return (List) mapped.stream()
                 .filter(r -> {
                     if (classification == null || classification.isBlank() || "Todas".equalsIgnoreCase(classification)) return true;
-                    String cls = String.valueOf(((Map)r).get("classification"));
+                    String cls = String.valueOf(((Map) r).get("classification"));
                     return cls.equalsIgnoreCase(classification)
                             || (classification.toLowerCase().contains("nao") && cls.toLowerCase().contains("não"))
                             || (classification.toLowerCase().contains("não") && cls.toLowerCase().contains("nao"));
                 })
                 .filter(r -> {
                     if (fromDate == null && toDate == null) return true;
-                    LocalDate itemDate = parseDateSafe(String.valueOf(((Map)r).get("timestamp")));
+                    LocalDate itemDate = parseDateSafe(String.valueOf(((Map) r).get("timestamp")));
                     if (itemDate == null) return true;
                     if (fromDate != null && itemDate.isBefore(fromDate)) return false;
                     if (toDate != null && itemDate.isAfter(toDate)) return false;
