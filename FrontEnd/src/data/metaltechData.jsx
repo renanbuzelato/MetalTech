@@ -3,7 +3,7 @@ export const metalTechData = {
   // Cada endpoint documenta método, payload esperado e finalidade da integração.
   api: {
     mode: 'rest', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
-    baseUrl: 'http://10.110.12.66:8080/api/v1',
+    baseUrl: 'http://10.110.12.72:8080/api/v1',
     timeoutMs: 12000,
     credentials: 'same-origin',
     headers: {
@@ -29,7 +29,7 @@ export const metalTechData = {
     // Nenhum dado de operation/account/configuration é fallback no modo REST: estes blocos são sementes exclusivas do modo demo.
     //
     // FORMATOS DE RESPOSTA ESPERADOS (JSON):
-    // User: { id, name, email, role, status, permissions: string[] | Record<string, boolean> }.
+    // User: { id, name, email, role, status, permissions: string[] }, where permissions contains the descriptive labels returned by GET /users.
     // Station: { id, name, location, status, shift, controllerId }.
     // Sensor: { id, type, technology, value, unit, status, lastSeenAt }.
     // Reading: { id, timestamp, classification, inductive, capacitive, distance, reservoirLevel, status }.
@@ -38,9 +38,9 @@ export const metalTechData = {
     // Settings: { alertThresholds: { attention, critical, variationInFiveMinutes }, collection: { intervalSeconds, refreshSeconds }, integration: { apiUrl, controllerId, protocol, version }, station: { name, location, reservoirCapacity, reservoirHeight }, security: { twoFactorEnabled, auditEnabled, sessionTimeoutMinutes } }.
     // Reservoir status: { currentLevel, distance, capacity, attentionThreshold, criticalThreshold, storedPieces, updatedAt }.
     // Login: POST /auth/login body { email, password }, response { token, user }. Register: POST /auth/register body { name, email, password }, response { message, user? }.
-    // Listagens aceitam filtros via query string e retornam [] ou { data: [] }; detalhes retornam objeto ou { data: objeto }.
+    // GET /users retorna uma lista de usuários com permissões individuais em texto: 'Monitorar e consultar leituras', 'Reconhecer alertas', 'Exportar análises e históricos' e 'Editar regras, estações e usuários'. Listagens aceitam [] ou { data: [] }; detalhes retornam objeto ou { data: objeto }.
     // Erros devem retornar HTTP 4xx/5xx e JSON { message, code?, details? }.
-    // Realtime: SSE GET /events ou WebSocket deve publicar JSON { type?, data: { users?, alerts?, readings?, sensors?, production?, settings?, station?, reservoir?, rolePermissions?, overview?, currentUser? } }.
+    // Realtime: SSE GET /events ou WebSocket deve publicar JSON { type?, data: { users?, alerts?, readings?, sensors?, production?, settings?, station?, reservoir?, overview?, currentUser? } }.
     endpoints: {
       health: { method: 'GET', path: '/health' }, // disponibilidade da API
       auth: {
@@ -76,7 +76,6 @@ export const metalTechData = {
         export: { method: 'GET', path: '/readings/export' }, // query: mesmos filtros; resposta JSON[] (frontend gera CSV)
       },
       reservoir: { status: { method: 'GET', path: '/reservoir/status' } }, // response: { currentLevel, distance, capacity, attentionThreshold, criticalThreshold, storedPieces, updatedAt }
-      permissions: { roles: { method: 'GET', path: '/permissions/roles' } }, // matriz de permissões padrão; response: { data: [{ resource, operator, analyst, administrator }] }
       analytics: {
         overview: { method: 'GET', path: '/analytics/overview' }, // response: { totalPieces, metallicPieces, nonMetallicPieces, metallicPercent, nonMetallicPercent, period, updatedAt }
         production: { method: 'GET', path: '/analytics/production' }, // query: stationId, from, to, interval; response: [{ hour, metallic, nonMetallic, reservoirLevel }]

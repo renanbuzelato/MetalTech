@@ -190,12 +190,6 @@ export const api = {
     return unwrapObject(await http(route.path, { method: route.method }))
   },
 
-  async listRolePermissions() {
-    if (isDemoMode()) return metalTechData.account.permissions
-    const route = endpoint('permissions', 'roles')
-    return unwrapList(await http(route.path, { method: route.method }))
-  },
-
   async getOverview(query = {}) {
     if (isDemoMode()) return null
     const route = endpoint('analytics', 'overview')
@@ -320,11 +314,11 @@ export const api = {
 
   // Snapshot único para manter todas as telas sincronizadas com o mesmo ciclo de atualização.
   async refreshAll() {
-    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'reservoirAnalytics', 'settings', 'station', 'reservoir', 'rolePermissions', 'overview', 'currentUser']
+    const keys = ['users', 'alerts', 'readings', 'sensors', 'production', 'reservoirAnalytics', 'settings', 'station', 'reservoir', 'overview', 'currentUser']
     const requests = [
       this.listUsers(), this.listAlerts(), this.listReadings(), this.listSensors(),
       this.listProduction(), this.listReservoirAnalytics(), this.getSettings(), this.getStation(), this.getReservoirStatus(),
-      this.listRolePermissions(), this.getOverview(), this.me(),
+      this.getOverview(), this.me(),
     ]
     const results = await Promise.allSettled(requests)
     const snapshot = {}

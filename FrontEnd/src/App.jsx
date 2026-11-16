@@ -7,6 +7,22 @@ const number = (value) => value == null ? '—' : Number(value || 0).toLocaleStr
 const percent = (value) => value == null ? '—' : `${Number(value || 0)}%`
 const dateTime = (value) => new Date(value).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 const dateLabel = (value) => new Date(value).toLocaleDateString('pt-BR')
+
+// A API /users entrega permissões como descrições, não como chaves internas da interface.
+const API_PERMISSION_GROUPS = [
+  { label: 'Monitorar e consultar leituras', keys: ['overview', 'station', 'analytics', 'history', 'alerts'] },
+  { label: 'Reconhecer alertas', keys: ['manageAlerts'] },
+  { label: 'Exportar análises e históricos', keys: ['exportData'] },
+  { label: 'Editar regras, estações e usuários', keys: ['users', 'settings', 'manageUsers', 'manageSettings'] },
+]
+const apiPermissionKeys = (permissions) => {
+  if (!Array.isArray(permissions)) return []
+  return permissions.flatMap((permission) => {
+    const group = API_PERMISSION_GROUPS.find((item) => item.label === permission)
+    return group ? group.keys : (typeof permission === 'string' ? [permission] : [])
+  })
+}
+const userSelectionKey = (item) => `${item?.id ?? ''}::${item?.email ?? ''}`
 const avg = (values) => values.length ? values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length : 0
 const median = (values) => {
   if (!values.length) return 0
@@ -25,7 +41,6 @@ function App() {
   const [sensors, setSensors] = useState(() => demo ? data.operation.sensors : [])
   const [alerts, setAlerts] = useState(() => demo ? data.operation.alerts : [])
   const [reservoirData, setReservoirData] = useState(() => demo ? data.operation.reservoir : {})
-  const [rolePermissionRows, setRolePermissionRows] = useState(() => demo ? data.account.permissions : [])
   const [overviewData, setOverviewData] = useState(null)
   const [user, setUser] = useState(() => getStoredSession())
 
@@ -93,27 +108,16 @@ function App() {
     ],
   }
   const canAccess = (key) => {
-    // Permissões individuais explícitas sempre prevalecem sobre as permissões do perfil.
-    if (Array.isArray(user?.permissions)) return user.permissions.includes(key)
+    // No REST, as permissões individuais vêm diretamente do objeto do usuário em GET /users e /auth/me.
+    if (Array.isArray(user?.permissions)) {
+      if (demo) return user.permissions.includes(key)
+      return apiPermissionKeys(user.permissions).includes(key) || user.permissions.includes(key)
+    }
     if (user?.permissions && typeof user.permissions === 'object' && key in user.permissions) {
       return Boolean(user.permissions[key])
     }
-
-    if (isDemoMode()) return (rolePermissions[user?.role] ?? []).includes(key)
-
-    // No REST, usa exclusivamente a matriz de perfis recebida de GET /permissions/roles.
-    // Essa matriz já é carregada no estado rolePermissionRows, mas antes não era consultada.
-    const roleField = {
-      Administrador: 'administrator',
-      Analista: 'analyst',
-      Operador: 'operator',
-    }[user?.role]
-    if (!roleField) return false
-
-    const permissionRow = rolePermissionRows.find((row) =>
-      row?.resource === key || row?.key === key || row?.permission === key
-    )
-    return Boolean(permissionRow?.[roleField])
+    // Apenas o modo demonstração utiliza permissões locais por perfil.
+    return demo && (rolePermissions[user?.role] ?? []).includes(key)
   }
   const [showLogin, setShowLogin] = useState(() => !getStoredSession())
   const [login, setLogin] = useState({ email: '', password: '', remember: true })
@@ -136,7 +140,19 @@ function App() {
     const applySnapshot = (snapshot = {}) => {
       if (!active || !snapshot || typeof snapshot !== 'object') return
       if (snapshot.currentUser && typeof snapshot.currentUser === 'object') setUser(snapshot.currentUser)
-      if (Array.isArray(snapshot.users)) setUsers(snapshot.users)
+      if (Array.isArray(snapshot.users)) {
+        setUsers(snapshot.users)
+        // /users também é a fonte das permissões individuais. Sincroniza o usuário logado
+        // pelo e-mail (mais específico que o ID, que pode estar duplicado no retorno atual).
+        setUser((current) => {
+          if (!current) return current
+          const matchingUser = snapshot.users.find((item) =>
+            item?.email && current?.email &&
+            String(item.email).toLowerCase() === String(current.email).toLowerCase()
+          ) || snapshot.users.find((item) => String(item?.id) === String(current?.id))
+          return matchingUser ? { ...current, ...matchingUser } : current
+        })
+      }
       if (Array.isArray(snapshot.alerts)) {
         setAlerts(snapshot.alerts)
         setSelectedAlert((current) => snapshot.alerts.find((item) => item.id === current?.id) || snapshot.alerts[0] || null)
@@ -147,7 +163,6 @@ function App() {
       }
       if (Array.isArray(snapshot.sensors)) setSensors(snapshot.sensors)
       if (snapshot.reservoir && typeof snapshot.reservoir === 'object') setReservoirData(snapshot.reservoir)
-      if (Array.isArray(snapshot.rolePermissions)) setRolePermissionRows(snapshot.rolePermissions)
       if (snapshot.overview && typeof snapshot.overview === 'object') setOverviewData(snapshot.overview.data ?? snapshot.overview)
       if (Array.isArray(snapshot.production)) setHourly(snapshot.production)
       if (Array.isArray(snapshot.reservoirAnalytics)) setReservoirAnalytics(snapshot.reservoirAnalytics)
@@ -246,26 +261,27 @@ function App() {
       '◴', 
       'Histórico'
     ], [
-      'alerts', 
-      '⚠', 
-      'Alertas'
-    ], [
       'users', 
       '♙', 
       'Usuários e acesso'
-    ], [
-      'settings', 
-      '☷', 
-      'Conexão'
     ],
   ]
   const [heading, description] = pageInfo[page] ?? pageInfo.overview
-  const selectedPermissionUser = users.find((item) => String(item.id) === String(permissionUserId))
-  const defaultPermissionMap = Array.isArray(selectedPermissionUser?.permissions)
-    ? selectedPermissionUser.permissions.reduce((acc, key) => ({ ...acc, [key]: true }), {})
-    : selectedPermissionUser?.permissions && typeof selectedPermissionUser.permissions === 'object'
-      ? selectedPermissionUser.permissions
-      : (isDemoMode() ? (rolePermissions[selectedPermissionUser?.role] ?? rolePermissions.Operador) : []).reduce((acc, key) => ({ ...acc, [key]: true }), {})
+  const selectedPermissionUser = users.find((item) => userSelectionKey(item) === String(permissionUserId))
+  const defaultPermissionMap = (() => {
+    if (Array.isArray(selectedPermissionUser?.permissions)) {
+      if (demo) return selectedPermissionUser.permissions.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+      return selectedPermissionUser.permissions.reduce((acc, label) => ({ ...acc, [label]: true }), {})
+    }
+    if (selectedPermissionUser?.permissions && typeof selectedPermissionUser.permissions === 'object') {
+      return selectedPermissionUser.permissions
+    }
+    if (demo) {
+      const keys = rolePermissions[selectedPermissionUser?.role] ?? rolePermissions.Operador
+      return keys.reduce((acc, key) => ({ ...acc, [key]: true }), {})
+    }
+    return {}
+  })()
   const selectedPermissions = permissionDraft[permissionUserId] ?? defaultPermissionMap
 
   // No modo REST, os totais e percentuais vêm exclusivamente de /analytics/overview.
@@ -451,6 +467,12 @@ function App() {
           </div>
           <small className="muted">
               {isDemoMode() ? `Modo demonstração · ${data.session.user.email} · senha: ${data.api.demo.password}` : 'MetalTech · © MetalTech'}
+              <br></br>
+              <p>Desenvolvido por </p>
+              <p>Rhuan de Padua Oliveira</p>
+              <p>Renan Buzelato</p>
+              <p>Daniel Dagnoni</p>
+              <p>Felipe Fernandes Macari</p>
           </small>
         </form> : <form className="login-card" noValidate onSubmit={handleRegistration}>
           <div className="eyebrow">NOVO ACESSO</div><h2>Solicitar cadastro</h2><p>Preencha seus dados. O acesso será liberado após aprovação do administrador.</p>
@@ -494,7 +516,7 @@ function App() {
             ))}
             {navItems.every(([id]) => !canAccess(id)) && (
               <p className="sidebar-permission-warning" role="status">
-                Nenhuma página foi liberada para este usuário. Verifique as permissões retornadas por /auth/me e /permissions/roles.
+                Nenhuma página foi liberada para este usuário. Verifique as permissões retornadas por /auth/me ou pelo registro correspondente em /users.
               </p>
             )}
           </nav>
@@ -577,12 +599,13 @@ function App() {
                 </>}
 
                 {page === 'users' && <>
+                  {users.some((item) => item.id && users.filter((other) => String(other.id) === String(item.id)).length > 1) && <div className="api-errors" role="status"><b>Atenção: existem usuários com IDs duplicados na resposta de /users.</b><small>O backend precisa garantir um ID único por usuário. Enquanto houver duplicidade, operações por /users/:id podem atingir o registro errado.</small></div>}
                   <div className="users-layout"><Card title="Equipe da fábrica" extra={<small className="muted">{users.length} usuários · {users.filter((item) => item.status === 'Ativo').length} ativos · {users.filter((item) => item.status === 'Pendente').length} convites pendentes</small>}>
-                    <table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map((item) => <tr key={item.id ?? item.email}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role}</td><td><span className={item.status === 'Ativo' ? 'tag success' : 'tag warning'}>{item.status}</span></td><td>{canAccess('manageUsers') ? <>{item.status !== 'Ativo' && <button className="text-action" onClick={async () => { try { await api.updateUser(item.id, { status: 'Ativo' }); setUsers(await api.listUsers()); notify('Acesso do usuário aprovado') } catch (error) { notify(error.message) } }}>Aprovar acesso</button>} <button className="text-action" onClick={async () => { const name = window.prompt('Nome do usuário:', item.name); if (name === null) return; const email = window.prompt('E-mail:', item.email); if (email === null) return; const role = window.prompt('Perfil (Operador, Analista ou Administrador):', item.role); if (role === null) return; if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['Operador', 'Analista', 'Administrador'].includes(role)) { notify('Confira nome, e-mail e perfil'); return } try { await api.updateUser(item.id, { name: name.trim(), email: email.trim(), role }); setUsers(await api.listUsers()); notify('Usuário atualizado') } catch (error) { notify(error.message) } }}>Editar</button> <button className="text-action" onClick={async () => { if (!window.confirm(`Excluir ${item.name}?`)) return; try { await api.deleteUser(item.id); setUsers(await api.listUsers()); notify('Usuário excluído') } catch (error) { notify(error.message) } }}>Excluir</button></> : <span className="muted">Consulta</span>}</td></tr>)}</tbody></table>
+                    <table className="data-table user-table"><thead><tr><th>USUÁRIO</th><th>PERFIL</th><th>STATUS</th><th>AÇÕES</th></tr></thead><tbody>{users.map((item) => <tr key={userSelectionKey(item)}><td><b>{item.name}</b><small>{item.email}</small></td><td>{item.role}</td><td><span className={item.status === 'Ativo' ? 'tag success' : 'tag warning'}>{item.status}</span></td><td>{canAccess('manageUsers') ? <>{item.status !== 'Ativo' && <button className="text-action" onClick={async () => { if (users.filter((other) => String(other.id) === String(item.id)).length > 1) { notify('Não é possível alterar este usuário: o ID está duplicado no backend.'); return } try { await api.updateUser(item.id, { status: 'Ativo' }); setUsers(await api.listUsers()); notify('Acesso do usuário aprovado') } catch (error) { notify(error.message) } }}>Aprovar acesso</button>} <button className="text-action" onClick={async () => { if (users.filter((other) => String(other.id) === String(item.id)).length > 1) { notify('Não é possível alterar este usuário: o ID está duplicado no backend.'); return } const name = window.prompt('Nome do usuário:', item.name); if (name === null) return; const email = window.prompt('E-mail:', item.email); if (email === null) return; const role = window.prompt('Perfil (Operador, Analista ou Administrador):', item.role); if (role === null) return; if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['Operador', 'Analista', 'Administrador'].includes(role)) { notify('Confira nome, e-mail e perfil'); return } try { await api.updateUser(item.id, { name: name.trim(), email: email.trim(), role }); setUsers(await api.listUsers()); notify('Usuário atualizado') } catch (error) { notify(error.message) } }}>Editar</button> <button className="text-action" onClick={async () => { if (users.filter((other) => String(other.id) === String(item.id)).length > 1) { notify('Não é possível alterar este usuário: o ID está duplicado no backend.'); return } if (!window.confirm(`Excluir ${item.name}?`)) return; try { await api.deleteUser(item.id); setUsers(await api.listUsers()); notify('Usuário excluído') } catch (error) { notify(error.message) } }}>Excluir</button></> : <span className="muted">Consulta</span>}</td></tr>)}</tbody></table>
                   </Card>{canAccess('manageUsers') && <Card title="Convidar usuário"><p className="muted">Envie um convite com o perfil adequado.</p><label className="field"><span>Nome</span><input id="invite-name" value={invite.name} onChange={(event) => setInvite({ ...invite, name: event.target.value })} placeholder="Nome completo" /></label><label className="field"><span>E-mail corporativo</span><input type="email" value={invite.email} onChange={(event) => setInvite({ ...invite, email: event.target.value })} placeholder="nome@metaltech.com.br" /></label><label className="field"><span>Perfil de acesso</span><select value={invite.role} onChange={(event) => setInvite({ ...invite, role: event.target.value })}>{['Operador', 'Analista', 'Administrador'].map((role) => <option key={role}>{role}</option>)}</select></label>{action('Enviar convite', async () => { if (!invite.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email)) { notify('Informe nome e e-mail válido'); return } setBusy(true); try { await api.createUser(invite); setUsers(await api.listUsers()); setInvite({ name: '', email: '', role: 'Operador' }); notify(isDemoMode() ? 'Usuário salvo neste navegador' : 'Convite enviado pela API') } catch (error) { notify(error.message) } finally { setBusy(false) } })}</Card>}</div>
                   {canAdmin && <Card title="Permissões individuais de usuários"><p className="muted">Selecione um integrante e personalize as áreas que ele pode acessar. As permissões individuais prevalecem sobre as permissões padrão do perfil.</p>
-                      <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => item.id !== user.id).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></label>
-                      {selectedPermissionUser && <><div className="permission-check-grid">{[['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['settings', 'Conexão'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']].map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { setBusy(true); try { const permissions = permissionKeys.filter((key) => selectedPermissions[key]); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
+                      <label className="field permission-user-select"><span>Usuário</span><select value={permissionUserId} onChange={(event) => { setPermissionUserId(event.target.value); setPermissionDraft({}) }}><option value="">Selecione um usuário</option>{users.filter((item) => userSelectionKey(item) !== userSelectionKey(user)).map((item) => <option key={userSelectionKey(item)} value={userSelectionKey(item)}>{item.name} · {item.role} · {item.email}</option>)}</select></label>
+                      {selectedPermissionUser && <><div className="permission-check-grid">{(demo ? [['overview', 'Visão geral'], ['station', 'Estação e sensores'], ['analytics', 'Análises estatísticas'], ['history', 'Histórico de leituras'], ['alerts', 'Central de alertas'], ['users', 'Usuários e permissões'], ['exportData', 'Exportar dados e relatórios'], ['manageAlerts', 'Reconhecer e resolver alertas'], ['manageUsers', 'Cadastrar e editar usuários'], ['manageSettings', 'Alterar configurações']] : API_PERMISSION_GROUPS.map(({ label }) => [label, label])).map(([key, label]) => <label className="permission-check" key={key}><input type="checkbox" checked={Boolean(selectedPermissions[key])} onChange={(event) => setPermissionDraft((current) => ({ ...current, [permissionUserId]: { ...selectedPermissions, [key]: event.target.checked } }))} /><span>{label}</span></label>)}</div><button className="primary" disabled={busy} onClick={async () => { if (!demo && users.filter((item) => String(item.id) === String(selectedPermissionUser.id)).length > 1) { notify('Não é possível salvar: este usuário compartilha um ID duplicado. Corrija os IDs no backend.'); return } setBusy(true); try { const permissions = demo ? permissionKeys.filter((key) => selectedPermissions[key]) : API_PERMISSION_GROUPS.filter(({ label }) => selectedPermissions[label]).map(({ label }) => label); await api.updateUser(selectedPermissionUser.id, { permissions }); const refreshed = await api.listUsers(); setUsers(refreshed); setPermissionDraft({}); notify('Permissões atualizadas com sucesso') } catch (error) { notify(error.message) } finally { setBusy(false) } }}>Salvar permissões</button></>}
                     </Card>}
                 </>}
 
