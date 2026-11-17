@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+
+
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>RA - Esteira de Triagem | MetalTech</title>
+
+  <script>
+    window.METALTECH_MOBILE_PHONE = /Android.*Mobile|iPhone|iPod|Windows Phone/i.test(navigator.userAgent);
+    if (window.METALTECH_MOBILE_PHONE) {
+      document.write('<script src="https://aframe.io/releases/1.4.2/aframe.min.js"><\/script>');
+      document.write('<script src="https://raw.githack.com/AR-js-org/AR.js/3.4.5/aframe/build/aframe-ar.js"><\/script>');
+    } else {
+      document.documentElement.classList.add('somente-mobile-bloqueado');
+    }
+  </script>
+
+  <style>
+
+    html, body { margin: 0; height: 100%; overflow: hidden;
+                 font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #avisoDesktop { display: none; }
+    html.somente-mobile-bloqueado, html.somente-mobile-bloqueado body { min-height: 100%; height: 100%; overflow: auto; background: #101820; color: #f4f7fa; }
+    html.somente-mobile-bloqueado body > *:not(#avisoDesktop) { display: none !important; }
+    html.somente-mobile-bloqueado #avisoDesktop { min-height: 100vh; box-sizing: border-box; display: grid; place-content: center; padding: 32px; text-align: center; font-family: system-ui, sans-serif; }
+    #avisoDesktop .cartao-aviso { width: min(100%, 440px); margin: auto; padding: 32px; border: 1px solid #344452; border-radius: 18px; background: #192630; box-sizing: border-box; }
+    #avisoDesktop h1 { margin: 0 0 12px; font-size: 25px; }
+    #avisoDesktop p { margin: 0; color: #c5d0d8; line-height: 1.6; }
+    #fundo { position: fixed; inset: 0; background: #000; z-index: -3; }
+
+    #btnIniciar { position: fixed; z-index: 25; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                  font: inherit; font-size: 20px; font-weight: 600; padding: 16px 26px; border: 0;
+                  border-radius: 10px; background: #4fc3f7; color: #102027; }
+    #btnIniciar.oculto { display: none; }
+
+    #debug { display: none; position: fixed; left: 8px; right: 8px; z-index: 30;
+             top: calc(64px + env(safe-area-inset-top, 0px)); margin: 0; padding: 8px;
+             font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; color: #b9f6ca;
+             background: rgba(0, 0, 0, .78); border-radius: 6px; white-space: pre-wrap; }
+
+    #hud { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+           padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+           background: rgba(18, 22, 26, .88); color: #eceff1; font-size: 15px;
+           display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; }
+    #hud .linha { display: flex; align-items: center; gap: 8px; }
+
+    .ponto { width: 10px; height: 10px; border-radius: 50%; background: #90a4ae; }
+    .ponto.ok { background: #4caf50; }
+    .ponto.erro { background: #f44336; }
+    .ponto.aviso { background: #ffc107; }
+
+    #dica { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%;
+            transform: translateX(-50%); z-index: 10; padding: 8px 14px; border-radius: 6px;
+            background: rgba(18, 22, 26, .88); color: #eceff1; font-size: 14px; text-align: center;
+            width: max-content; max-width: calc(100% - 32px); }
+    #dica.oculto { display: none; }
+
+    #btnVisao { font: inherit; font-size: 14px; padding: 6px 10px; border: 0; border-radius: 6px;
+                background: #37474f; color: #eceff1; }
+
+  </style>
+</head>
+<body>
+
+<div id="avisoDesktop"><div class="cartao-aviso"><h1>Realidade aumentada</h1><p>Esta experiência está disponível somente em celulares. Abra o site MetalTech pelo navegador do seu Android ou iPhone para acessar a câmera e utilizar a RA.</p></div></div>
+<div id="fundo"></div>
+<pre id="debug"></pre>
+<button id="btnIniciar" class="oculto" type="button">Toque para iniciar a câmera</button>
+
+<div id="dica">Aponte a câmera para o marcador da esteira</div>
+
+<div id="hud">
+  <div class="linha"><span id="ptMarcador" class="ponto"></span><span id="lblMarcador">Marcador não detectado</span></div>
+  <div class="linha"><span id="ptApi" class="ponto"></span><span id="lblApi">Aguardando dados</span></div>
+  <button id="btnVisao" type="button">Visão: ampla</button>
+</div>
+
+<a-scene embedded vr-mode-ui="enabled: false"
+         arjs="sourceType: webcam; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;">
+
+  <a-marker id="marcador" preset="hiro">
+
+    <a-plane position="0 0.01 0" rotation="-90 0 0" width="2.4" height="1.9"
+             color="#12161a" opacity="0.85"></a-plane>
+
+    <a-text id="txtTitulo" value="ESTEIRA DE TRIAGEM" position="0 0.02 -0.75" rotation="-90 0 0"
+            align="center" width="3" color="#ffffff"></a-text>
+
+    <a-text id="txtMetal" value="Metalicas: --" position="0 0.02 -0.35" rotation="-90 0 0"
+            align="center" width="3" color="#4fc3f7"></a-text>
+
+    <a-text id="txtNaoMetal" value="Nao metalicas: --" position="0 0.02 -0.05" rotation="-90 0 0"
+            align="center" width="3" color="#a5d6a7"></a-text>
+
+    <a-box id="barraFundo" position="0 0.03 0.4" width="2" height="0.02" depth="0.18" color="#3a434b"></a-box>
+    <a-box id="barraNivel" position="-0.99 0.04 0.4" width="0.01" height="0.03" depth="0.16" color="#4caf50"></a-box>
+
+    <a-text id="txtNivel" value="Nivel do reservatorio: --%" position="0 0.02 0.7" rotation="-90 0 0"
+            align="center" width="3" color="#ffffff"></a-text>
+
+    <a-entity id="alerta" visible="false" position="0 0.35 0" rotation="-60 0 0">
+      <a-plane width="2.2" height="0.45" color="#f44336" id="alertaFundo"></a-plane>
+      <a-text id="txtAlerta" value="" position="0 0 0.01" align="center" width="3.6" color="#ffffff"></a-text>
+    </a-entity>
+
+  </a-marker>
+
+  <a-entity camera></a-entity>
+</a-scene>
+
+<script>
+  if (window.METALTECH_MOBILE_PHONE) {
+    const configScript = document.createElement('script');
+    configScript.src = 'config.js';
+    configScript.onload = () => {
+      const appScript = document.createElement('script');
+      appScript.src = 'app.js';
+      document.body.appendChild(appScript);
+    };
+    document.body.appendChild(configScript);
+  }
+</script>
+</body>
+</html>

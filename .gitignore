@@ -1,0 +1,3 @@
+infra/mosquitto/data/
+*.log
+.vscode/
