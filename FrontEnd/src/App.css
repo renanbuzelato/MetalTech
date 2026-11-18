@@ -38,7 +38,7 @@
 .legend small,.chart-footnote{flex-basis:100%;display:block;color:#8798aa;font-size:9px;margin-top:4px}
 .composition-total{display:flex;align-items:baseline;gap:8px;margin:14px 0 4px}
 .composition-total strong{font-size:25px;color:#26384a}
-.composition-total span{font-size:10px;color:#8798aa}
-.composition-legend{margin-top:14px}
+
+.composition-legend{margin-top:14px}.composition-total span{font-size:10px;color:#8798aa}
 .analysis-reference{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:10px;color:#718399}
 @media(max-width:780px){.line-chart{height:175px}.legend{gap:10px}}

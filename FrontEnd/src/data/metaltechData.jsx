@@ -3,7 +3,7 @@ export const metalTechData = {
   // Cada endpoint documenta método, payload esperado e finalidade da integração.
   api: {
     mode: 'rest', // 'demo' = persistência local; 'rest' = comunicação HTTP real.
-    baseUrl: 'http://10.110.12.72:8080/api/v1',
+    baseUrl: 'http://10.110.12.4:8080/api/v1',
     timeoutMs: 12000,
     credentials: 'same-origin',
     headers: {

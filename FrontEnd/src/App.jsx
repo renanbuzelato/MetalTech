@@ -568,7 +568,27 @@ function App() {
 
                 {page === 'analytics' && <>
                   <div className="filter-bar"><select aria-label="Estação"><option>{station.name}</option></select><select aria-label="Período"><option>Turno atual</option></select><span className="muted">{hourly.length} amostras horárias</span></div>
-                  <div className="analytics-grid"><Card title="Evolução do nível do reservatório"><p className="chart-help">Percentual de ocupação medido ao longo do turno. Use as referências abaixo para identificar quando o nível exige atenção.</p><LineChart series={[{ label: 'Nível do reservatório', color: 'teal', values: reservoirAnalytics.map((item) => item.level ?? item.reservoirLevel) }]} labels={reservoirAnalytics.map((item) => item.timestamp ? dateTime(item.timestamp) : item.hour ?? '')} unit="%" fixedMax={100} /><div className="analysis-reference"><span>● Atenção: {reservoir.attentionThreshold}%</span><span>● Crítico: {reservoir.criticalThreshold}%</span></div><small className="chart-footnote">Eixo vertical: ocupação (%) · Eixo horizontal: horário</small></Card>
+                  <div className="analytics-grid">
+                  
+                    <Card title="Evolução do nível do reservatório">
+                      <p className="chart-help">
+                        Percentual de ocupação medido ao longo do turno. Use as referências abaixo para identificar quando o nível exige atenção.
+                      </p>
+                      <LineChart series={[{ 
+                        label: 'Nível do reservatório', 
+                        color: 'teal', 
+                        values: reservoirAnalytics.map((item) => item.level ?? item.reservoirLevel) }]} 
+                        labels={reservoirAnalytics.map((item) => item.timestamp ? dateTime(item.timestamp) : item.hour ?? '')} unit="%" fixedMax={100} 
+                      />
+                        <div className="analysis-reference">
+                          <span>● Atenção: {reservoir.attentionThreshold}%</span>
+                          <span>● Crítico: {reservoir.criticalThreshold}%</span>
+                        </div>
+                        <small className="chart-footnote">
+                          Eixo vertical: ocupação (%) · Eixo horizontal: horário
+                        </small>
+                    </Card>
+
                     <Card title="Composição da produção"><p className="chart-help">Distribuição das peças classificadas no período selecionado. As barras mostram a participação de cada tipo no total.</p><div className="composition-total"><strong>{number(totals?.total)}</strong><span>peças no período</span></div><HorizontalBar label="Metálicas" value={`${number(totals?.metallic)} · ${totals?.metallicPercent ?? "—"}%`} percent={totals?.metallicPercent ?? 0} /><HorizontalBar label="Não metálicas" value={`${number(totals?.nonMetallic)} · ${totals?.nonMetallicPercent ?? "—"}%`} percent={totals?.nonMetallicPercent ?? 0} blue /><div className="legend composition-legend"><span><i className="dot teal" /> Metálicas</span><span><i className="dot blue" /> Não metálicas</span></div><small className="chart-footnote">Percentuais fornecidos pelo consolidado da API.</small></Card>
                   </div>
                   <Card title="Estatística descritiva"><p className="muted">Indicadores por hora e nível do reservatório · {hourly.length} amostras. Média, mediana, mínimo e máximo facilitam comparar produção e estabilidade.</p><StatsTable hourly={hourly} reservoirSeries={reservoirAnalytics} /></Card>
@@ -659,6 +679,26 @@ function LineChart({ series = [], labels = [], unit = '', fixedMax = null }) {
   const y = (value) => 150 - ((Number(value) - min) / Math.max(max - min, 1)) * 125
   const ticks = fixedMax === 100 ? [100, 75, 50, 25, 0] : [max, max * .75, max * .5, max * .25, 0]
   const hasData = series.some((item) => (item.values || []).length)
+
+  // Mantém todos os pontos da série e reduz apenas a quantidade de rótulos no eixo X.
+  const maxAxisLabels = 7
+  const labelStep = Math.max(1, Math.ceil((labels.length - 1) / (maxAxisLabels - 2)))
+  const visibleLabelIndexes = labels
+    .map((_, index) => index)
+    .filter((index) => index === 0 || index === labels.length - 1 || index % labelStep === 0)
+
+  const formatAxisLabel = (label) => {
+    if (label == null) return ''
+    const value = String(label).trim()
+    const timeMatch = value.match(/(?:T|\\s)?(\\d{1,2}:\\d{2})(?::\\d{2})?/)
+    if (timeMatch) return timeMatch[1]
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    }
+    return value
+  }
+
   if (!hasData) return <div className="chart-empty">Aguardando dados da API para montar o gráfico.</div>
   return <div className="chart-visual">
     <svg className="line-chart" viewBox="0 0 600 178" role="img" aria-label="Gráfico de linhas com evolução por horário">
@@ -671,7 +711,7 @@ function LineChart({ series = [], labels = [], unit = '', fixedMax = null }) {
           {values.map((value, index) => <circle key={`${item.label}-${index}`} cx={x(index, values.length)} cy={y(value)} r="3.5" fill={item.color === 'blue' ? '#5878cf' : '#00877f'} stroke="#fff" strokeWidth="1.5"><title>{`${item.label}: ${value}${unit === '%' ? '%' : ` ${unit}`}${labels[index] ? ` · ${labels[index]}` : ''}`}</title></circle>)}
         </g>
       })}
-      {labels.map((label, index) => <text key={`${label}-${index}`} x={x(index, labels.length)} y="171" textAnchor="middle" fill="#8798aa" fontSize="10">{label}</text>)}
+      {visibleLabelIndexes.map((index) => <text key={`${labels[index]}-${index}`} x={x(index, labels.length)} y="171" textAnchor={index === 0 ? 'start' : index === labels.length - 1 ? 'end' : 'middle'} fill="#718399" fontSize="10">{formatAxisLabel(labels[index])}</text>)}
     </svg>
   </div>
 }
